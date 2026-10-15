@@ -50,7 +50,7 @@ export function renderOnboarding(holder) {
   appId.placeholder = "UUID приложения"; appId.autocomplete = "off";
   const callback = this.el("input"); callback.name = "callback_url"; callback.type = "url";
   callback.required = true; callback.value = state.callback_url ||
-    (window.location.protocol === "https:" ? `${window.location.origin}${window.location.pathname}` : "");
+    `${window.location.origin}${window.location.pathname}`;
   callback.autocomplete = "off";
   const saveApp = this.el("button", "Сохранить настройки", "primary"); saveApp.type = "submit";
   appForm.append(this.el("label", "UUID приложения"), appId,
@@ -65,7 +65,7 @@ export function renderOnboarding(holder) {
       this.render();
     }, "Настройки приложения сохранены");
   };
-  appBlock.append(this.el("p", "Создайте AIS приложение в Control Panel, загрузите публичный сертификат выше и зарегистрируйте HTTPS-адрес своего Home Assistant как Redirect URL. После входа итоговый адрес заполнится ниже; если это не случилось, скопируйте его из адресной строки.", "muted"), appForm);
+  appBlock.append(this.el("p", "Создайте AIS приложение в Control Panel, загрузите публичный сертификат и зарегистрируйте этот же Redirect URL. Адрес HA в домашней сети может начинаться с http://, если Control Panel его примет. Браузер, завершающий вход в банк, должен видеть HA по этому адресу. После входа итоговый адрес заполнится ниже; если это не случилось, скопируйте его из адресной строки.", "muted"), appForm);
   section.append(appBlock);
 
   const authBlock = this.el("details"); authBlock.open = state.has_key && state.has_application_id && !state.has_session;

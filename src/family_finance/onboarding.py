@@ -49,7 +49,7 @@ def _callback(value: str) -> str:
         validated = Settings(project_dir=Path("."), application_id=str(UUID(int=0)),
                              key_file=Path("key"), callback_url=value)
     except (ValueError, TypeError):
-        raise FinanceError("Enter a plain HTTPS redirect URL") from None
+        raise FinanceError("Use HTTPS or a local HTTP address for the redirect URL") from None
     return validated.callback_url
 
 
