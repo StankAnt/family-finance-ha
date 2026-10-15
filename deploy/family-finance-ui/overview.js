@@ -18,7 +18,7 @@ export function renderOverview(holder) {
     complete ? "banner good" : "banner");
   holder.append(banner);
   if (month.counts.unclassified) {
-    const review = this.el("button", `Разметить операции (${month.counts.unclassified})`, "primary");
+    const review = this.el("button", `Разметить операции (${month.counts.unclassified})`, "primary review-shortcut");
     review.type = "button";
     review.onclick = async () => {
       Object.assign(this, { tab: "review", filter: "unclassified", reviewScope: "month",

@@ -86,6 +86,7 @@ export const styles = `${tokens}
   .review-head { display:grid; grid-template-columns:minmax(0,1fr); align-items:start; gap:18px; min-width:0; }
   .review-head .toolbar-actions { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); align-items:end; width:100%; min-width:0; }
   .review-head .toolbar-actions > label { width:100%; max-width:none; min-width:0; }
+  .review-reset,.review-shortcut { justify-self:start; }
   .review-head .review-search { width:100%; grid-column:span 2; }
   .review-head .review-project { grid-column:span 2; }
   .review-search { width:min(100%,520px); min-width:0; }
