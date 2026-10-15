@@ -14,7 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .classification import household
-from .models import (Account, AccountBalanceSnapshot, BankConnection, Category, CoverageDeclaration, FxRate, Goal,
+from .models import (Account, AccountBalanceSnapshot, BankConnection, CashEntry, Category, CoverageDeclaration, FxRate, Goal,
                      GoalProgress, ManualRevision, Mortgage, MortgageAllocation, Transaction,
                      ValuationSnapshot, Project, SyncRun, now)
 from .secrets import FinanceError
@@ -260,6 +260,12 @@ def monthly_report(db: Session, year: int, month: int) -> dict:
         Transaction.booking_date >= start, Transaction.booking_date < end)).all()
     allocations = {a.transaction_id: a for a in db.scalars(select(MortgageAllocation).where(
         MortgageAllocation.transaction_id.in_([tx.id for tx in rows]))).all()} if rows else {}
+    reimbursements = defaultdict(lambda: ZERO)
+    if rows:
+        for receipt in db.scalars(select(CashEntry).where(
+                CashEntry.household_id == home.id, CashEntry.kind == "reimbursement",
+                CashEntry.transaction_id.in_([tx.id for tx in rows]))):
+            reimbursements[receipt.transaction_id] += receipt.amount
     categories = {item.id: item for item in db.scalars(select(Category).where(
         Category.household_id == home.id)).all()}
     projects = {item.id: item.name for item in db.scalars(select(Project).where(
@@ -306,7 +312,7 @@ def monthly_report(db: Session, year: int, month: int) -> dict:
             sums["unclassified_net"] += amount_pln
             if amount_pln < 0:
                 counts["unclassified_debits"] += 1
-                spend = -amount_pln
+                spend = max(-amount_pln - reimbursements[tx.id], ZERO)
                 sums["unclassified_spending"] += spend
                 category_sums["Other/Unclassified"] += spend
                 category_by_type[kind]["Other/Unclassified"] += spend
@@ -331,7 +337,7 @@ def monthly_report(db: Session, year: int, month: int) -> dict:
                 income_path = path
             category_by_type[kind][income_path] += amount_pln
         elif kind in {"consumption", "project_expense"}:
-            spend = -amount_pln
+            spend = max(-amount_pln - reimbursements[tx.id], ZERO)
             sums["spending"] += spend
             spend_path = "Other/Uncategorized"
             if tx.category_id in categories:
@@ -363,6 +369,32 @@ def monthly_report(db: Session, year: int, month: int) -> dict:
             sums["other_cashflow"] += amount_pln
             if amount_pln < 0:
                 category_by_type["other_external_outflow"]["Other/External transfer"] -= amount_pln
+    # Cash expenses are new household purchases. Cash reimbursements already reduce
+    # the linked bank purchase above, so they must not become external income.
+    for entry in db.scalars(select(CashEntry).where(CashEntry.household_id == home.id,
+            CashEntry.kind == "expense", CashEntry.occurred_on >= start,
+            CashEntry.occurred_on < end)):
+        spend = -entry.amount
+        sums["spending"] += spend
+        sums["cash_spending"] += spend
+        sums["outflows_total"] += spend
+        sums["cashflow"] -= spend
+        category = categories.get(entry.category_id)
+        parent = categories.get(category.parent_id) if category else None
+        path = f"{parent.name}/{category.name}" if parent else category.name if category else "Other/Uncategorized"
+        category_sums[path] += spend
+        kind = "project_expense" if entry.project_id else "consumption"
+        category_by_type[kind][path] += spend
+        if entry.project_id in projects:
+            name = projects[entry.project_id]
+            project_sums[name] += spend
+            category_by_project_type[name][kind][path] += spend
+            sums["exceptional_projects"] += spend
+        else:
+            sums["baseline_living"] += spend
+    sums["cashflow"] += sum((entry.amount for entry in db.scalars(select(CashEntry).where(
+        CashEntry.household_id == home.id, CashEntry.kind == "reimbursement",
+        CashEntry.occurred_on >= start, CashEntry.occurred_on < end))), ZERO)
     sums["outflows_without_mortgage_investments"] = (
         sums["outflows_total"] - sums["outflows_mortgage"] - sums["outflows_investments"])
     sums["outflows_total"] += ZERO
@@ -376,6 +408,8 @@ def monthly_report(db: Session, year: int, month: int) -> dict:
     sums["investment_contributions"] += ZERO
     sums["investment_returns"] += ZERO
     sums["mortgage_principal_confirmed"] += ZERO
+    sums["cash_spending"] += ZERO
+    sums["cash_reimbursements"] = sum(reimbursements.values(), ZERO)
     return {
         "period": f"{year:04d}-{month:02d}", "currency": "PLN",
         "fx_source": "NBP table A mid; latest published on/before booking date, max 7 days",
@@ -494,7 +528,9 @@ def position_report(db: Session, day: date) -> dict:
         required.add("mortgage_debt")
     for kind in required - {kind for kind, _ in seen}:
         gaps.append(kind)
-    assets = parts["bank_cash"] + parts["investment"] + parts["property"] + parts["other_asset"]
+    parts["cash_on_hand"] = sum((entry.amount for entry in db.scalars(select(CashEntry).where(
+        CashEntry.household_id == home.id, CashEntry.occurred_on <= day))), ZERO)
+    assets = parts["bank_cash"] + parts["cash_on_hand"] + parts["investment"] + parts["property"] + parts["other_asset"]
     debts = parts["mortgage_debt"] + parts["other_debt"]
     goals = []
     for goal in db.scalars(select(Goal).where(Goal.household_id == home.id, Goal.active.is_(True))):
@@ -536,6 +572,7 @@ def position_report(db: Session, day: date) -> dict:
     return {"as_of": str(day), "currency": "PLN",
             "components_pln": {key: str(value.quantize(CENT)) for key, value in sorted(parts.items())},
             "liquid_savings_pln": str(parts["bank_cash"].quantize(CENT)) if "account_balance" not in gaps and "account_fx" not in gaps else None,
+            "cash_on_hand_pln": str(parts["cash_on_hand"].quantize(CENT)),
             "net_worth_pln": str((assets - debts).quantize(CENT)) if complete else None,
             "partial_net_worth_pln": str((assets - debts).quantize(CENT)),
             "complete": complete, "coverage_confirmed_as_of": str(declaration.as_of) if declaration else None,

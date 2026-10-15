@@ -16,10 +16,11 @@ from sqlalchemy import String, and_, cast, func, or_, select
 from sqlalchemy.orm import Session
 
 from .accounting import import_manual, monthly_report, pln, position_report
+from .cash import add_cash, cash_report, delete_cash
 from .classification import (ECONOMIC_TYPES, add_project, add_rule, apply_overrides,
                              category_by_path, classify, confirm_manual_pair, decide_pair,
                              household)
-from .models import (Account, AccountBalanceSnapshot, BankConnection, Category, ClassificationCorrection, DecisionSuggestion, Goal,
+from .models import (Account, AccountBalanceSnapshot, BankConnection, CashEntry, Category, ClassificationCorrection, DecisionSuggestion, Goal,
                      Mortgage, MortgageAllocation, Project, SyncRun, Transaction, TransferPair)
 from .secrets import FinanceError, read_private
 from .sync import database_engine
@@ -168,7 +169,14 @@ def _review(db: Session, payload: dict) -> dict:
             if converted is None:
                 missing_fx += 1
             else:
-                total_pln += converted
+                refunds = sum((row.amount for row in db.scalars(select(CashEntry).where(
+                    CashEntry.transaction_id == expense.id, CashEntry.kind == "reimbursement"))), 0)
+                total_pln += max(converted - refunds, 0)
+        cash_query = select(CashEntry).where(CashEntry.household_id == home.id,
+            CashEntry.kind == "expense")
+        if project:
+            cash_query = cash_query.where(CashEntry.project_id == project.id)
+            total_pln += sum((-row.amount for row in db.scalars(cash_query)), 0)
         project_total = {"amount_pln": str(total_pln), "transactions": len(expenses),
                          "missing_fx": missing_fx}
     suggestions = {item.transaction_id: item for item in db.scalars(select(DecisionSuggestion).where(
@@ -180,6 +188,11 @@ def _review(db: Session, payload: dict) -> dict:
         TransferPair.credit_transaction_id.in_(row_ids)))).all() if row_ids else []
     pair_status = {transaction_id: pair.status for pair in pairs for transaction_id in
                    (pair.debit_transaction_id, pair.credit_transaction_id)}
+    refund_amounts = {}
+    if row_ids:
+        for receipt in db.scalars(select(CashEntry).where(CashEntry.kind == "reimbursement",
+                CashEntry.transaction_id.in_(row_ids))):
+            refund_amounts[receipt.transaction_id] = refund_amounts.get(receipt.transaction_id, 0) + receipt.amount
     return {"total": total, "offset": offset, "project_total": project_total, "rows": [{
         "id": str(tx.id), "date": str(tx.transaction_date or tx.booking_date or tx.value_date or ""),
         "booking_date": str(tx.booking_date) if tx.booking_date else None,
@@ -189,6 +202,7 @@ def _review(db: Session, payload: dict) -> dict:
                      if tx.category_id in categories else None),
         "project": projects.get(tx.project_id), "economic_type": tx.economic_type,
         "pair_status": pair_status.get(tx.id),
+        "cash_reimbursed": str(refund_amounts.get(tx.id, 0)),
         "suggestion": ({"category": _category_path(categories[suggestions[tx.id].category_id], categories),
                         "confidence": str(suggestions[tx.id].confidence),
                         "purchase_probability": str(suggestions[tx.id].purchase_probability),
@@ -258,6 +272,14 @@ def execute(db: Session, operation: str, payload: dict) -> dict:
         return _review(db, payload)
     if operation == "transfers":
         return _transfers(db)
+    if operation == "cash":
+        today = datetime.now(ZoneInfo("Europe/Warsaw")).date()
+        year, month = _period(payload) or (today.year, today.month)
+        return cash_report(db, f"{year:04d}-{month:02d}")
+    if operation == "cash_add":
+        return add_cash(db, payload)
+    if operation == "cash_delete":
+        return delete_cash(db, payload)
     if operation == "decide_transfer":
         if set(payload) != {"pair_id", "confirm"} or not isinstance(payload["confirm"], bool):
             raise FinanceError("Invalid transfer decision")

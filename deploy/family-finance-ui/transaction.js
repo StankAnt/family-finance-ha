@@ -45,8 +45,22 @@ export function renderTransaction(list, tx) {
       };
       const dropdown = this.el("div", undefined, "tx-menu-panel");
       dropdown.append(pick);
+      if (side === "debit" && tx.currency === "PLN" &&
+          ["consumption", "project_expense", "unclassified"].includes(tx.economic_type) &&
+          Number(tx.cash_reimbursed || 0) < Math.abs(Number(tx.amount))) {
+        const reimbursement = this.el("button", "Вернули наличными");
+        reimbursement.type = "button";
+        reimbursement.onclick = () => {
+          this.pendingCashPurchase = tx; this.cashKind = "reimbursement";
+          this.tab = "cash"; this.drawTabs(); this.render();
+          this.shadowRoot.querySelector(".nav")?.scrollIntoView({ behavior:"smooth", block:"start" });
+        };
+        dropdown.append(reimbursement);
+      }
       menu.append(dropdown);
     }
+    if (Number(tx.cash_reimbursed || 0) > 0)
+      row.append(this.el("div", `Вернули наличными: ${money(tx.cash_reimbursed, "PLN")}. Семейный расход уменьшен на эту сумму.`, "banner good"));
     if (tx.suggestion) {
       const suggestion = this.el("div", undefined, "suggestion");
       const detail = this.el("div");

@@ -94,7 +94,7 @@ export function renderOverview(holder) {
   const outgoingMetrics = this.el("div", undefined, "metrics");
   outgoingMetrics.append(
     this.metric("Все исходящие платежи", money(a.outflows_total || 0),
-      "Включая ипотеку целиком и перечисления в инвестиции. Свои переводы и обмен валюты исключены"),
+      "Включая наличные покупки, ипотеку целиком и перечисления в инвестиции. Свои переводы и обмен валюты исключены"),
     this.metric(hasMortgage ? "Без ипотеки и инвестиций" : "Без инвестиций", money(a.outflows_without_mortgage_investments || 0),
       `${month.counts.unclassified_debits || 0} неразмеченных списаний включены предварительно; среди них ещё могут быть свои переводы`, "warm"));
   outgoing.append(outgoingMetrics);
@@ -117,7 +117,7 @@ export function renderOverview(holder) {
       hasMortgage ? "Уже входит во все исходящие платежи; не входит в сумму без ипотеки и инвестиций" :
         "Уже входит во все исходящие платежи; не входит в сумму без инвестиций", "soft"),
     this.metric("Денежный поток", money(a.cashflow || 0),
-      "Поступления минус исходящие движения; это не сумма расходов", "soft")
+      "Банковские движения плюс полученные и потраченные наличные; это не сумма расходов", "soft")
   );
   if (hasMortgage) metrics.insertBefore(this.metric("В тело ипотеки за месяц", money(a.mortgage_principal_confirmed || 0),
     `По разбивке ${month.counts.mortgage_allocated || 0} платежей${month.counts.mortgage_unallocated ? `; ещё ${month.counts.mortgage_unallocated} без разбивки` : ""}. Уже входит в «всю ипотеку» выше`, "soft"), metrics.children[2]);
@@ -130,6 +130,12 @@ export function renderOverview(holder) {
     position.missing_components?.includes("account_balance_estimated") ?
       "Оценка на конец месяца: от более поздних остатков отняты последующие операции" :
       "По учётным остаткам; сумма в PLN требует курсы валют"));
+  const cashMetric = this.metric("Наличные", money(position.cash_on_hand_pln || 0),
+    "Учтённый остаток семейного кошелька", "soft");
+  cashMetric.classList.add("cash-link"); cashMetric.tabIndex = 0; cashMetric.setAttribute("role", "link");
+  cashMetric.onclick = () => { this.tab = "cash"; this.drawTabs(); this.render(); };
+  cashMetric.onkeydown = event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); cashMetric.click(); } };
+  current.append(cashMetric);
   if (hasMortgage) current.append(this.metric("Остаток ипотеки", position.mortgage_debts?.length === 1 ?
       money(position.mortgage_debts[0].amount, position.mortgage_debts[0].currency) :
       position.mortgage_debts?.length && !position.missing_components?.includes("valuation_fx") ?

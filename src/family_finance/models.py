@@ -131,6 +131,23 @@ class Transaction(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
+class CashEntry(Base):
+    """PLN household cash movement; reimbursements point to one bank purchase."""
+
+    __tablename__ = "cash_entry"
+    __table_args__ = (Index("ix_cash_entry_household_date", "household_id", "occurred_on"),)
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    household_id: Mapped[UUID] = mapped_column(ForeignKey("household.id"), nullable=False)
+    occurred_on: Mapped[date] = mapped_column(Date, nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(20, 4), nullable=False)
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    transaction_id: Mapped[UUID | None] = mapped_column(ForeignKey("transaction.id"))
+    category_id: Mapped[UUID | None] = mapped_column(ForeignKey("category.id"))
+    project_id: Mapped[UUID | None] = mapped_column(ForeignKey("project.id"))
+    note: Mapped[str | None] = mapped_column(String(250))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
 class ClassificationCorrection(Base):
     __tablename__ = "classification_correction"
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)

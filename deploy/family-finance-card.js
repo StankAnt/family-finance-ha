@@ -4,6 +4,7 @@ import { heading, metric, field, choice, checkbox, form } from "./family-finance
 import { renderOverview } from "./family-finance-ui/overview.js";
 import { saveCorrection, renderReview, appendReviewRow, renderPairSelection, changePage } from "./family-finance-ui/operations.js";
 import { renderTransfers } from "./family-finance-ui/transfers.js";
+import { renderCash } from "./family-finance-ui/cash.js";
 import { renderTransaction } from "./family-finance-ui/transaction.js";
 import { readRoute, writeRoute } from "./family-finance-ui/router.js";
 
@@ -113,10 +114,11 @@ class FamilyFinanceCard extends HTMLElement {
     this._applyingRoute = true;
     try {
       if (monthChanged) {
-        const [overview, review] = await Promise.all([
-          this.api("overview", { month: this.month }), this.api("review", this.reviewPayload())]);
+        const [overview, review, cash] = await Promise.all([
+          this.api("overview", { month: this.month }), this.api("review", this.reviewPayload()),
+          this.api("cash", { month: this.month })]);
         if (generation !== this._routeGeneration) return;
-        this.overview = overview; this.review = review;
+        this.overview = overview; this.review = review; this.cash = cash;
       } else if (reviewChanged) {
         const review = await this.api("review", this.reviewPayload());
         if (generation !== this._routeGeneration) return;
@@ -165,9 +167,10 @@ class FamilyFinanceCard extends HTMLElement {
     });
   }
   async reloadPeriod() {
-    [this.overview, this.review] = await Promise.all([
+    [this.overview, this.review, this.cash] = await Promise.all([
       this.api("overview", { month: this.month }),
       this.api("review", this.reviewPayload()),
+      this.api("cash", { month: this.month }),
     ]);
     this.render();
   }
@@ -229,7 +232,7 @@ class FamilyFinanceCard extends HTMLElement {
   drawTabs() {
     const holder = this.shadowRoot.querySelector(".nav"); holder.replaceChildren();
     for (const [id, title] of [["overview","Обзор"],["review","Операции"],
-                                ["transfers","Свои переводы"],["inputs","Настройки и ввод"]]) {
+                                ["transfers","Свои переводы"],["cash","Наличные"],["inputs","Настройки и ввод"]]) {
       const link = this.el("a", title, id === this.tab ? "active" : "");
       link.href = writeRoute({ ...this, tab: id });
       if (id === this.tab) link.setAttribute("aria-current", "page");
@@ -247,6 +250,7 @@ class FamilyFinanceCard extends HTMLElement {
     if (this.tab === "overview") this.renderOverview(holder);
     else if (this.tab === "review") this.renderReview(holder);
     else if (this.tab === "transfers") this.renderTransfers(holder);
+    else if (this.tab === "cash") renderCash.call(this, holder);
     else this.renderInputs(holder);
     this.syncRoute();
     if (this._scrollToTarget) {

@@ -13,7 +13,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from .decision_input import input_hash, prepare_input
-from .models import (Account, BankConnection, Category, CategorizationRule,
+from .models import (Account, BankConnection, CashEntry, Category, CategorizationRule,
                      ClassificationCorrection, DecisionSuggestion, Household, Project, Transaction,
                      TransferPair, now)
 from .secrets import FinanceError
@@ -222,6 +222,8 @@ def classify(db: Session) -> tuple[int, int]:
         TransferPair.household_id == home.id, TransferPair.status == "CONFIRMED")).all()
     transferred = {tid for pair in confirmed for tid in
                    (pair.debit_transaction_id, pair.credit_transaction_id)}
+    reimbursed = set(db.scalars(select(CashEntry.transaction_id).where(
+        CashEntry.household_id == home.id, CashEntry.kind == "reimbursement")).all())
     accounts = db.scalars(select(Account).join(BankConnection).where(
         BankConnection.household_id == home.id)).all()
     own_identifiers = {account.identifier_digest for account in accounts
@@ -256,7 +258,7 @@ def classify(db: Session) -> tuple[int, int]:
     matched = unknown = 0
     for transaction in transactions:
         suggestion = suggestions.get(transaction.id)
-        if transaction.override_at is not None or transaction.id in transferred:
+        if transaction.override_at is not None or transaction.id in transferred or transaction.id in reimbursed:
             if suggestion is not None:
                 suggestion.status = "SUPERSEDED"
             continue
@@ -361,6 +363,10 @@ def apply_overrides(db: Session, changes: list[dict[str, Any]]) -> int:
             value = change["economic_type"]
             if value not in ECONOMIC_TYPES - {"internal_transfer"}:
                 raise FinanceError("Invalid manual economic type")
+            if value not in {"consumption", "project_expense", "unclassified"} and db.scalar(
+                    select(CashEntry.id).where(CashEntry.transaction_id == transaction.id,
+                    CashEntry.kind == "reimbursement").limit(1)):
+                raise FinanceError("Remove the cash reimbursement before changing this purchase type")
             transaction.economic_type = value
         current = (transaction.category_id, transaction.project_id, transaction.economic_type)
         transaction.override_at = now()
@@ -391,6 +397,8 @@ def pair_transfers(db: Session) -> tuple[int, int]:
     existing = db.scalars(select(TransferPair).where(TransferPair.household_id == home.id)).all()
     occupied = {tid for pair in existing for tid in
                 (pair.debit_transaction_id, pair.credit_transaction_id)}
+    occupied.update(db.scalars(select(CashEntry.transaction_id).where(
+        CashEntry.household_id == home.id, CashEntry.kind == "reimbursement")).all())
     transactions = db.scalars(select(Transaction).where(
         Transaction.account_id.in_(own), Transaction.status == "BOOK",
         Transaction.counterparty_identifier_digest.is_not(None),
@@ -457,6 +465,9 @@ def decide_pair(db: Session, pair_id: UUID, *, confirm: bool) -> None:
     debit = db.get(Transaction, pair.debit_transaction_id)
     credit = db.get(Transaction, pair.credit_transaction_id)
     if confirm:
+        if db.scalar(select(CashEntry.id).where(CashEntry.transaction_id.in_([debit.id, credit.id]),
+                CashEntry.kind == "reimbursement").limit(1)):
+            raise FinanceError("Remove the cash reimbursement before confirming a transfer")
         if debit.override_at is not None or credit.override_at is not None:
             raise FinanceError("Manual overrides must be cleared before confirming transfer")
         pair.status = "CONFIRMED"
@@ -502,6 +513,9 @@ def confirm_manual_pair(db: Session, debit_id: UUID, credit_id: UUID) -> None:
         raise FinanceError("Transfer amounts, currencies or dates do not match")
     if debit.override_at is not None or credit.override_at is not None:
         raise FinanceError("Manually corrected transactions cannot be paired")
+    if db.scalar(select(CashEntry.id).where(CashEntry.transaction_id.in_([debit_id, credit_id]),
+            CashEntry.kind == "reimbursement").limit(1)):
+        raise FinanceError("Remove the cash reimbursement before pairing a transfer")
     occupied = db.scalar(select(TransferPair.id).where(or_(
         TransferPair.debit_transaction_id.in_([debit_id, credit_id]),
         TransferPair.credit_transaction_id.in_([debit_id, credit_id]))))

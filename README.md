@@ -30,7 +30,7 @@ administration endpoint binds to host loopback only.
    ```sh
    git clone https://github.com/StankAnt/family-finance-ha.git
    cd family-finance-ha
-   git checkout v0.1.5
+   git checkout v0.1.6
    ```
 2. Run `python3 distribution/bootstrap.py`. It creates local random database and
    API credentials, mode-600 files under `secrets/`, and `.env` with your UID/GID.
@@ -152,6 +152,24 @@ tick the consent box. The key is stored locally in `secrets/openai/api_key`.
 The application sends redacted merchant/description text for classification;
 amounts, dates, account identifiers, and full bank records are not sent.
 
+## Cash and reimbursements
+
+The **Наличные** tab is a local PLN wallet. Enter an opening balance if you
+already have cash, then record cash purchases with a category and optional
+project. The wallet balance is included in family assets. Cash purchases enter
+the same monthly spending chart as bank purchases.
+
+If you paid for someone else and they returned cash, open the **bank purchase**
+in **Операции**, choose **⋯ → Вернули наличными**, and record the amount and
+receipt date. Partial reimbursements are supported. The returned amount reduces
+that purchase's family expense in the bank posting month and increases the cash
+wallet on the receipt date. It is not external income; the original bank outflow
+still shows the full bank payment. You can delete an incorrect cash entry from
+the wallet history. This flow currently supports completed PLN purchases.
+
+The wallet is local to the finance database. Entering cash does not contact the
+bank or send cash notes to MQTT or OpenAI. Back up the database before updates.
+
 ## Updates and backups
 
 Releases are applied **on each friend's own server**. A push to GitHub does not
@@ -160,7 +178,7 @@ the moving `main` branch. From the same checkout used for installation:
 
 ```sh
 git fetch --tags origin
-git checkout v0.1.3                        # example future tested release tag
+git checkout v0.1.6                        # example tested release tag
 python3 distribution/update.py \
   --config-dir /path/to/homeassistant/config \
   --ha-container homeassistant            # omit if HA has another restart method

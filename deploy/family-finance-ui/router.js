@@ -2,9 +2,9 @@
 // the fragment so the dashboard slug is not repeated in bookmarked URLs.
 const PREFIX = "#/";
 const LEGACY_PREFIX = "#/family-finance/";
-const PAGE_TO_TAB = { overview: "overview", operations: "review", transfers: "transfers",
+const PAGE_TO_TAB = { overview: "overview", operations: "review", transfers: "transfers", cash: "cash",
   settings: "inputs", review: "review", inputs: "inputs" };
-const TAB_TO_PAGE = { overview: "overview", review: "operations", transfers: "transfers", inputs: "settings" };
+const TAB_TO_PAGE = { overview: "overview", review: "operations", transfers: "transfers", cash: "cash", inputs: "settings" };
 const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
 const STATUSES = new Set(["all", "unclassified", "pending"]);
 

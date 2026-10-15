@@ -140,6 +140,29 @@ export const styles = `${tokens}
   .account-row { display:grid; gap:6px; padding:16px; border:1px solid var(--divider-color,#e3e9ed); border-radius:12px; }
   .account-row span { font-size:1.25rem; font-weight:750; font-variant-numeric:tabular-nums; }
   .account-row small { color:var(--secondary-text-color,#657789); }
+  .cash-link { cursor:pointer; }
+  .cash-link:hover { border-color:var(--ff-accent); background:var(--ff-accent-soft); }
+  .cash-actions { display:grid; gap:16px; }
+  .cash-actions h3 { margin:0; }
+  .cash-switcher { display:flex; flex-wrap:wrap; gap:8px; }
+  .cash-switch { border-radius:999px; }
+  .cash-switch.active { color:var(--ff-accent-dark); background:var(--ff-accent-soft); border-color:var(--ff-accent); font-weight:700; }
+  .cash-form { display:grid; gap:16px; }
+  .cash-form-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr)); gap:14px; }
+  .cash-form > button { justify-self:start; }
+  .cash-purchase { display:grid; gap:4px; padding:14px 16px; border-radius:12px; background:var(--ff-accent-soft); min-width:0; }
+  .cash-purchase strong { overflow-wrap:anywhere; }
+  .cash-purchase small { color:var(--ff-muted); }
+  .cash-history { display:grid; gap:2px; margin-top:14px; }
+  .cash-entry { display:grid; grid-template-columns:minmax(0,1fr) auto auto; gap:16px; align-items:center; padding:14px 4px; border-top:1px solid var(--ff-border); }
+  .cash-entry-main { display:grid; gap:3px; min-width:0; }
+  .cash-entry-main small { color:var(--ff-muted); }
+  .cash-entry-main span { overflow-wrap:anywhere; }
+  .cash-linked-purchase { color:var(--ff-ink); font-size:.85rem; }
+  .cash-entry > strong { white-space:nowrap; font-variant-numeric:tabular-nums; }
+  .cash-in { color:#11705d; }
+  .cash-remove { padding:7px 10px; }
+  @media(max-width:600px) { .cash-entry { grid-template-columns:minmax(0,1fr) auto; } .cash-remove { grid-column:1/-1; justify-self:start; } }
   .mortgage-guide { margin-top:18px; padding-top:18px; border-top:1px solid var(--divider-color,#e3e9ed); }
   .empty { padding:35px 20px; text-align:center; }
   .section { margin:0; }
