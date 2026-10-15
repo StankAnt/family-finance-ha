@@ -10,7 +10,9 @@ authenticated Home Assistant administrator session.
 - Linux server with Docker Compose v2, Python 3.11+ for the installer, and a
   **Home Assistant Core container in host-network mode on the same server**.
 - Writable Home Assistant configuration directory on that server.
-- An HTTPS address for your own Home Assistant, reachable during bank login.
+- An HTTPS address for your own Home Assistant, reachable from the browser that
+  completes bank login. It may be private to a VPN; a public HA endpoint is not
+  required.
 - An Enable Banking AIS application and permission to link your accounts.
 - The current bank chooser covers Polish banks returned by Enable Banking.
 
@@ -28,7 +30,7 @@ administration endpoint binds to host loopback only.
    ```sh
    git clone https://github.com/StankAnt/family-finance-ha.git
    cd family-finance-ha
-   git checkout v0.1.0
+   git checkout v0.1.1
    ```
 2. Run `python3 distribution/bootstrap.py`. It creates local random database and
    API credentials, mode-600 files under `secrets/`, and `.env` with your UID/GID.
@@ -93,6 +95,38 @@ the address bar long enough to copy. [Enable Banking's AIS flow](https://enableb
 documents that its redirect adds `code` and `state` and that the code is
 exchanged through `POST /sessions`.
 
+### No public domain or public Home Assistant endpoint
+
+You can keep Home Assistant private and still give the browser a valid HTTPS
+callback. One option is [Tailscale Serve](https://tailscale.com/docs/features/tailscale-serve):
+
+1. Join the HA host and the phone/computer used for bank login to the same
+   tailnet. Enable MagicDNS and HTTPS certificates for the tailnet.
+2. On the HA host, where Home Assistant listens on `127.0.0.1:8123`, run
+   `tailscale serve --bg 8123`. Run `tailscale serve status` to see its
+   `https://<machine>.<tailnet>.ts.net` address. **Use Serve, not Funnel**;
+   Serve is available only within the tailnet.
+3. Open the finance dashboard through that HTTPS address and verify HA login
+   works before starting bank authorization. Register the exact dashboard URL,
+   for example `https://<machine>.<tailnet>.ts.net/family-finance/overview`,
+   in the Enable Banking Control Panel and in the finance setup form.
+4. Keep Tailscale connected on the device that finishes the bank flow. Some bank
+   apps open the device's default browser, which must also be able to reach the
+   tailnet and sign in to Home Assistant. The dashboard can accept the final
+   redirect URL by copy and paste if automatic capture does not work.
+
+If HA responds with a reverse-proxy error, configure only the actual proxy IP
+as a trusted proxy in [Home Assistant HTTP settings](https://www.home-assistant.io/integrations/http/)
+and retest. The Enable Banking Control Panel must accept the chosen HTTPS URL;
+this particular tailnet callback has not yet been tested against a production
+bank. Tailscale certificates publish the device's hostname to the public
+certificate-transparency log, while Serve access remains restricted to the
+tailnet. Choose a non-sensitive machine name.
+
+The application currently requires an HTTPS callback. A plain LAN URL such as
+`http://192.168.1.10:8123/...` is not supported for bank authorization because
+the one-time authorization code and state would travel over unencrypted HTTP.
+
 ## Optional OpenAI classification
 
 OpenAI processing starts **disabled** in a new installation. If you choose to
@@ -109,7 +143,7 @@ the moving `main` branch. From the same checkout used for installation:
 
 ```sh
 git fetch --tags origin
-git checkout v0.1.1                        # example tested release tag
+git checkout v0.1.2                        # example future tested release tag
 python3 distribution/update.py \
   --config-dir /path/to/homeassistant/config \
   --ha-container homeassistant            # omit if HA has another restart method
