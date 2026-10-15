@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "family-finance"
+version = "0.1.0"
+description = "Local read-only household banking integration"
+requires-python = ">=3.11"
+dependencies = ["fastapi>=0.115,<1", "uvicorn>=0.30,<1", "httpx>=0.27,<1", "pydantic>=2.8,<3", "PyJWT[crypto]>=2.9,<3", "cryptography>=43,<47", "SQLAlchemy>=2.0,<3", "alembic>=1.13,<2", "psycopg[binary]>=3.2,<4", "paho-mqtt>=2,<3"]
+
+[project.optional-dependencies]
+test = ["pytest>=8,<10"]
+
+[project.scripts]
+family-finance = "family_finance.cli:main"
+family-finance-callback = "family_finance.web:main"
+family-finance-mock-import = "family_finance.mock_import:main"
+family-finance-sync = "family_finance.sync:main"
+family-finance-classify = "family_finance.classify_cli:main"
+family-finance-accounting = "family_finance.accounting_cli:main"
+family-finance-dashboard-api = "family_finance.dashboard_api:main"
+family-finance-publish = "family_finance.mqtt_publish:main"
+family-finance-background-sync = "family_finance.background_sync:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

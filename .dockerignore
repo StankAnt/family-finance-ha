@@ -1,0 +1,12 @@
+secrets/
+.venv/
+.git/
+.pytest_cache/
+__pycache__/
+*.pyc
+*.dump
+*.sql
+legacy/
+tests/
+deploy/
+*.csv

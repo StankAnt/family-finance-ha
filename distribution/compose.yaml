@@ -1,0 +1,74 @@
+name: family-finance
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: finance
+      POSTGRES_DB: family_finance
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    secrets: [db_password]
+    volumes: [finance_pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U finance -d family_finance"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+    networks: [private]
+
+  migrate:
+    profiles: [manual]
+    build: ..
+    command: ["sh", "-c", "alembic upgrade head && python -m family_finance.initialize"]
+    user: "${FINANCE_UID}:${FINANCE_GID}"
+    volumes:
+      - ../secrets/database_url:/app/secrets/database_url:ro
+      - ../secrets/production_database_url:/app/secrets/production_database_url:ro
+    depends_on:
+      db: {condition: service_healthy}
+    networks: [private]
+
+  api:
+    build: ..
+    command: ["family-finance-dashboard-api"]
+    user: "${FINANCE_UID}:${FINANCE_GID}"
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp]
+    volumes:
+      - ../secrets/production_database_url:/app/secrets/production_database_url:ro
+      - ../secrets/dashboard_api_key:/app/secrets/dashboard_api_key:ro
+    depends_on:
+      db: {condition: service_healthy}
+    networks:
+      private:
+        ipv4_address: ${FINANCE_API_IP}
+
+  callback:
+    build: ..
+    command: ["family-finance-callback"]
+    user: "${FINANCE_UID}:${FINANCE_GID}"
+    restart: unless-stopped
+    environment:
+      FAMILY_FINANCE_LISTEN_HOST: 0.0.0.0
+    ports: ["127.0.0.1:${FINANCE_CALLBACK_PORT}:8765"]
+    volumes: ["../secrets:/app/secrets"]
+    depends_on:
+      db: {condition: service_healthy}
+    networks: [private, egress]
+
+volumes:
+  finance_pgdata:
+
+networks:
+  private:
+    internal: true
+    ipam:
+      config:
+        - subnet: ${FINANCE_PRIVATE_SUBNET}
+  egress: {}
+
+secrets:
+  db_password:
+    file: ../secrets/db_password

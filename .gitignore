@@ -1,0 +1,16 @@
+secrets/
+.env
+.env.*
+!.env.example
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.dump
+*.sql
+*.csv
+*.pem
+*.key
+*.sqlite*
+*.log
+family_finance_key

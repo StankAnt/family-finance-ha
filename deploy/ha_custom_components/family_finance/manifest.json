@@ -1,0 +1,9 @@
+{
+  "domain": "family_finance",
+  "name": "Family Finance dashboard bridge",
+  "version": "0.1.0",
+  "documentation": "https://www.home-assistant.io/docs/",
+  "dependencies": ["websocket_api"],
+  "codeowners": [],
+  "iot_class": "local_polling"
+}

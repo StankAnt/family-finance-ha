@@ -1,0 +1,8 @@
+title: Семейные финансы
+views:
+  - title: Финансы
+    path: overview
+    icon: mdi:finance
+    type: panel
+    cards:
+      - type: custom:family-finance-card
