@@ -125,6 +125,9 @@ def save_transactions(db: Session, account: Account, rows: list[dict[str, Any]])
         elif (current.payload_hash != item["payload_hash"] or
               current.counterparty_identifier_digest != item["counterparty_identifier_digest"]):
             for key, value in item.items():
+                if key == "transaction_date" and value is None and current.transaction_date is not None:
+                    # Keep a date recovered from a statement when AIS omits it.
+                    continue
                 setattr(current, key, value)
             current.updated_at = now()
             # Classification and manual overrides intentionally survive updates.
