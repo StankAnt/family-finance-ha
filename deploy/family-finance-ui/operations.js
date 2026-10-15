@@ -72,7 +72,16 @@ export function renderReview(holder) {
     };
   }
   view.querySelector("select").onchange = event => { this.reviewView = event.target.value; this.render(); };
-  toolbar.append(search, filter, view, scope, category, project); head.append(toolbar); holder.append(head);
+  toolbar.append(search, filter, view, scope, category, project);
+  const reset = this.el("button", "Сбросить все фильтры", "review-reset"); reset.type = "button";
+  reset.disabled = this.filter === "all" && !this.search && this.reviewScope === "month" &&
+    !this.categoryFilter && !this.projectFilter && this.reviewView === "list";
+  reset.onclick = async () => {
+    Object.assign(this, { filter: "all", search: "", reviewScope: "month",
+      categoryFilter: "", projectFilter: "", reviewView: "list", page: 0, transactionId: "" });
+    await this.busy(async () => { await this.loadReview(); this.render(); });
+  };
+  head.append(toolbar, reset); holder.append(head);
   if (this.projectFilter && this.review.project_total) {
     const summary = this.review.project_total;
     holder.append(this.metric(`Проект «${this.projectFilter}» · за всё время`, money(summary.amount_pln),

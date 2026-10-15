@@ -86,8 +86,9 @@ def _review(db: Session, payload: dict) -> dict:
         base = base.where(Transaction.status.in_(("HOLD", "PDNG")))
     else:
         base = base.where(Transaction.status.in_(("BOOK", "HOLD", "PDNG")))
-    effective_date = func.coalesce(Transaction.booking_date,
-                                   Transaction.transaction_date, Transaction.value_date)
+    # Show the purchase date when the bank provides one; posting can be days later.
+    effective_date = func.coalesce(Transaction.transaction_date,
+                                   Transaction.booking_date, Transaction.value_date)
     period = _period(payload)
     if period:
         start, end = _month_bounds(*period)
@@ -180,7 +181,8 @@ def _review(db: Session, payload: dict) -> dict:
     pair_status = {transaction_id: pair.status for pair in pairs for transaction_id in
                    (pair.debit_transaction_id, pair.credit_transaction_id)}
     return {"total": total, "offset": offset, "project_total": project_total, "rows": [{
-        "id": str(tx.id), "date": str(tx.booking_date or tx.transaction_date or tx.value_date or ""),
+        "id": str(tx.id), "date": str(tx.transaction_date or tx.booking_date or tx.value_date or ""),
+        "booking_date": str(tx.booking_date) if tx.booking_date else None,
         "bank_status": tx.status, "amount": str(tx.amount),
         "currency": tx.currency, "description": (tx.description or "")[:500],
         "category": (_category_path(categories[tx.category_id], categories)
@@ -244,6 +246,10 @@ def execute(db: Session, operation: str, payload: dict) -> dict:
                     "ai_checked": db.scalar(select(func.count()).select_from(DecisionSuggestion)) or 0,
                     "ai_applied": db.scalar(select(func.count()).select_from(DecisionSuggestion).where(
                         DecisionSuggestion.status == "APPLIED")) or 0,
+                    "manual_corrections": db.scalar(select(func.count()).select_from(ClassificationCorrection).where(
+                        ClassificationCorrection.source == "manual")) or 0,
+                    "learned_matches": db.scalar(select(func.count()).select_from(ClassificationCorrection).where(
+                        ClassificationCorrection.source == "reviewed_rule")) or 0,
                     "mortgages": db.scalar(select(func.count()).select_from(Mortgage)) or 0,
                     "mortgage_allocations": db.scalar(select(func.count()).select_from(MortgageAllocation)) or 0}}
     if operation == "options":

@@ -5,7 +5,7 @@ export function renderOverview(holder) {
   const month = this.overview.month, position = this.overview.position, a = month.amounts_pln;
   const hasMortgage = Boolean(this.options?.mortgages?.length);
   holder.append(this.heading(`Обзор · ${monthTitle(month.period)}`,
-    "Реальные счета. Показатели пересчитываются по выбранному месяцу. Суммы в PLN."));
+    "Реальные счета. Месячные суммы считаются по дате проведения банком; в списке операций показывается дата покупки, если банк её передал. Суммы в PLN."));
   if (this.source === "production" && !this.overview.source_status?.transactions) {
     holder.append(this.el("div", "Операции ещё не загружены из банка. Нажмите «Обновить реальные операции» ниже.", "banner"));
   }
@@ -17,6 +17,16 @@ export function renderOverview(holder) {
     `Отчёт предварительный: ${month.counts.unclassified || 0} операций без типа${hasMortgage ? `, ${month.counts.mortgage_unallocated || 0} ипотечных платежей без разбивки` : ""} и ${month.counts.missing_fx || 0} без курса валюты.`,
     complete ? "banner good" : "banner");
   holder.append(banner);
+  if (month.counts.unclassified) {
+    const review = this.el("button", `Разметить операции (${month.counts.unclassified})`, "primary");
+    review.type = "button";
+    review.onclick = async () => {
+      Object.assign(this, { tab: "review", filter: "unclassified", reviewScope: "month",
+        search: "", categoryFilter: "", projectFilter: "", page: 0, transactionId: "" });
+      await this.busy(async () => { await this.loadReview(); this.drawTabs(); this.render(); });
+    };
+    holder.append(review);
+  }
   const bank = this.el("section", undefined, "surface");
     bank.append(this.el("h3", "Банковские счета"), this.el("p",
       "Проверить типы доступных счетов по вашему нажатию. Эта проверка не загружает операции.", "muted"));
@@ -59,6 +69,8 @@ export function renderOverview(holder) {
     `Ранее проверено ${this.overview.source_status.ai_checked} операций; ${this.overview.source_status.ai_applied} категорий применено автоматически. Можно проверить оставшиеся.` :
     "Реальные операции ещё не проверялись через OpenAI.";
   ai.append(this.el("p", aiSummary, "muted"));
+  const learning = this.overview.source_status;
+  ai.append(this.el("p", `Ручных исправлений: ${learning.manual_corrections || 0} · автоматически размечено по ним: ${learning.learned_matches || 0} · применено через OpenAI: ${learning.ai_applied || 0}. Проверяйте новые операции в разделе «Операции»: эти счётчики показывают охват, а не точность.`, "muted"));
   if (aiState !== "running") {
     const aiStart = this.el("button", "Обработать оставшиеся операции", "primary");
     aiStart.type = "button";

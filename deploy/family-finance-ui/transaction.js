@@ -10,7 +10,10 @@ export function renderTransaction(list, tx) {
     menuButton.setAttribute("aria-label", "Действия с операцией");
     menu.append(menuButton);
     const left = this.el("div");
-    left.append(this.el("div", tx.date, "tx-date"),
+    left.append(this.el("div", tx.date, "tx-date"));
+    if (tx.booking_date && tx.booking_date !== tx.date)
+      left.append(this.el("div", `Проведено банком ${tx.booking_date}`, "muted"));
+    left.append(
       this.el("div", tx.bank_status !== "BOOK" ? "Ожидает проведения" :
         TYPE_INFO[tx.economic_type]?.[0] || tx.economic_type, "muted"));
     if (tx.bank_status === "BOOK") title.append(menu);

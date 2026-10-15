@@ -7,7 +7,7 @@ export function renderOnboarding(holder) {
   section.append(progress);
   if (this.authorizationError) section.append(this.el("p", this.authorizationError, "banner"));
 
-  const keyBlock = this.el("details");
+  const keyBlock = this.el("details", undefined, "onboarding-step");
   const keySummary = this.el("summary", "1. RSA ключ и публичный сертификат");
   keyBlock.append(keySummary);
   const keyHelp = this.el("p", "Создайте новую пару на сервере или загрузите свой приватный PEM. В Enable Banking Control Panel загрузите только публичный сертификат. Приватный ключ туда не копируйте.", "muted");
@@ -28,7 +28,13 @@ export function renderOnboarding(holder) {
     upload.value = "";
     this.render();
   }, "Приватный ключ сохранён локально");
-  keyBlock.append(generate, upload, useKey);
+  const keyActions = this.el("div", undefined, "onboarding-actions");
+  keyActions.append(generate);
+  const uploadField = this.el("label", "Или загрузите свой приватный PEM", "onboarding-field");
+  uploadField.append(upload);
+  keyBlock.append(keyActions, uploadField);
+  const keySaveActions = this.el("div", undefined, "onboarding-actions");
+  keySaveActions.append(useKey);
   if (state.has_certificate) {
     const certificate = this.el("button", "Показать публичный сертификат"); certificate.type = "button";
     certificate.onclick = () => this.busy(async () => {
@@ -38,11 +44,12 @@ export function renderOnboarding(holder) {
       output.setAttribute("aria-label", "Публичный сертификат для Enable Banking");
       certificate.replaceWith(output);
     });
-    keyBlock.append(certificate);
+    keySaveActions.append(certificate);
   }
+  keyBlock.append(keySaveActions);
   section.append(keyBlock);
 
-  const appBlock = this.el("details");
+  const appBlock = this.el("details", undefined, "onboarding-step");
   appBlock.open = !state.has_application_id;
   appBlock.append(this.el("summary", "2. Приложение Enable Banking"));
   const appForm = this.el("form", undefined, "setup-form");
@@ -68,7 +75,7 @@ export function renderOnboarding(holder) {
   appBlock.append(this.el("p", "Создайте AIS приложение в Control Panel, загрузите публичный сертификат и зарегистрируйте этот же Redirect URL. Адрес HA в домашней сети может начинаться с http://, если Control Panel его примет. Браузер, завершающий вход в банк, должен видеть HA по этому адресу. После входа итоговый адрес заполнится ниже; если это не случилось, скопируйте его из адресной строки.", "muted"), appForm);
   section.append(appBlock);
 
-  const authBlock = this.el("details"); authBlock.open = state.has_key && state.has_application_id && !state.has_session;
+  const authBlock = this.el("details", undefined, "onboarding-step"); authBlock.open = state.has_key && state.has_application_id && !state.has_session;
   authBlock.append(this.el("summary", "3. Авторизация счетов"));
   const bank = this.el("input"); bank.placeholder = "Название банка из списка";
   bank.setAttribute("aria-label", "Название банка в Enable Banking");
@@ -106,18 +113,22 @@ export function renderOnboarding(holder) {
     this.render();
     this.status(`Доступ подтверждён: ${result.authorized_accounts} счетов. Можно обновить операции на вкладке «Обзор».`, true);
   });
-  authBlock.append(bank, bankList, loadBanks, start, linkArea, finalUrl, finish,
+  const bankField = this.el("label", "Банк", "onboarding-field"); bankField.append(bank);
+  const authActions = this.el("div", undefined, "onboarding-actions"); authActions.append(loadBanks, start);
+  const finalUrlField = this.el("label", "Итоговый URL после входа в банк", "onboarding-field"); finalUrlField.append(finalUrl);
+  const finishActions = this.el("div", undefined, "onboarding-actions"); finishActions.append(finish);
+  authBlock.append(bankField, bankList, authActions, linkArea, finalUrlField, finishActions,
     this.el("p", "Чтобы добавить счета другого члена семьи, снова получите ссылку авторизации в том же приложении. Новая сессия добавится к существующим.", "muted"));
   section.append(authBlock);
 
-  const aiBlock = this.el("details");
+  const aiBlock = this.el("details", undefined, "onboarding-step");
   aiBlock.append(this.el("summary", "Классификация OpenAI (необязательно)"),
     this.el("p", "При включении приложение отправляет OpenAI текст получателя и назначение операции после удаления номеров счетов, карт и email. Суммы, даты и ключи не отправляются. Классификация может запускаться после загрузки новых операций.", "muted"));
   const aiKey = this.el("input"); aiKey.type = "password"; aiKey.autocomplete = "new-password";
   aiKey.placeholder = state.has_openai_key ? "Ключ уже сохранён; оставить пустым" : "OpenAI API key";
   aiKey.setAttribute("aria-label", "OpenAI API key");
   const aiConsent = this.el("input"); aiConsent.type = "checkbox"; aiConsent.checked = !!state.ai_enabled;
-  const aiLabel = this.el("label");
+  const aiLabel = this.el("label", undefined, "onboarding-consent");
   aiLabel.append(aiConsent, document.createTextNode(" Разрешаю классификацию новых операций через OpenAI"));
   const aiSave = this.el("button", "Сохранить настройку OpenAI"); aiSave.type = "button";
   aiSave.onclick = () => this.busy(async () => {
@@ -127,7 +138,9 @@ export function renderOnboarding(holder) {
     aiKey.value = "";
     this.render();
   }, "Настройка OpenAI сохранена");
-  aiBlock.append(aiKey, aiLabel, aiSave);
+  const aiKeyField = this.el("label", "Ключ OpenAI", "onboarding-field"); aiKeyField.append(aiKey);
+  const aiSaveActions = this.el("div", undefined, "onboarding-actions"); aiSaveActions.append(aiSave);
+  aiBlock.append(aiKeyField, aiLabel, aiSaveActions);
   section.append(aiBlock);
   holder.append(section);
 }
