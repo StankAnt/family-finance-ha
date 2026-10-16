@@ -130,8 +130,9 @@ export function renderOverview(holder) {
     position.missing_components?.includes("account_balance_estimated") ?
       "Оценка на конец месяца: от более поздних остатков отняты последующие операции" :
       "По учётным остаткам; сумма в PLN требует курсы валют"));
-  const cashMetric = this.metric("Наличные", money(position.cash_on_hand_pln || 0),
-    "Учтённый остаток семейного кошелька", "soft");
+  const cashMetric = this.metric("Наличные", position.cash_on_hand_pln == null ? "Нет курса" : money(position.cash_on_hand_pln),
+    Object.entries(position.cash_on_hand_by_currency || {}).map(([code, value]) => money(value, code)).join(" · ") ||
+      "Учтённый остаток семейного кошелька", "soft");
   cashMetric.classList.add("cash-link"); cashMetric.tabIndex = 0; cashMetric.setAttribute("role", "link");
   cashMetric.onclick = () => { this.tab = "cash"; this.drawTabs(); this.render(); };
   cashMetric.onkeydown = event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); cashMetric.click(); } };
@@ -165,7 +166,7 @@ export function renderOverview(holder) {
     "Для выбранной даты не хватает остатков по части счетов или история операций слишком старая для надёжного расчёта.", "banner"));
   const missing = (position.missing_components || []).filter(x => hasMortgage || x !== "mortgage_debt");
   if (missing.length) capital.append(this.el("p",
-    `Для полного расчёта недостаёт: ${missing.map(x => ({account_fx:"курс валюты для счетов",account_balance:"остаток счёта",account_balance_estimated:"подтверждённые остатки на эту дату",investment:"оценка инвестиций",property:"оценка недвижимости",mortgage_debt:"остаток ипотечного долга"}[x] || x)).join(", ")}.`, "muted"));
+    `Для полного расчёта недостаёт: ${missing.map(x => ({account_fx:"курс валюты для счетов",cash_fx:"курс валюты для наличных",account_balance:"остаток счёта",account_balance_estimated:"подтверждённые остатки на эту дату",investment:"оценка инвестиций",property:"оценка недвижимости",mortgage_debt:"остаток ипотечного долга"}[x] || x)).join(", ")}.`, "muted"));
   if (hasMortgage) {
   const mortgage = this.el("div", undefined, "mortgage-guide");
   mortgage.append(this.el("h3", "Как учитывать ипотеку"),

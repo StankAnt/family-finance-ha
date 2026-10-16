@@ -34,7 +34,7 @@ AI_STATUS_URL = "http://127.0.0.1:8765/internal/ai-status"
     vol.Required("operation"): vol.In(("overview", "options", "review", "bank_accounts", "bank_sync", "ai_start", "ai_status", "test_notification",
                                        "setup_status", "setup_credentials", "setup_generate_key", "setup_public_certificate", "auth_banks", "auth_start", "auth_complete", "correct", "correct_mortgage", "manual",
                                        "transfers", "decide_transfer", "manual_pair", "project", "category", "rule",
-                                       "cash", "cash_add", "cash_delete")),
+                                       "cash", "cash_add", "cash_delete", "cash_fx_sync")),
     vol.Optional("payload", default={}): dict,
     vol.Optional("source", default="production"): vol.In(("production",)),
     vol.Optional("user_agent"): vol.All(str, vol.Length(min=1, max=512)),
@@ -77,6 +77,7 @@ async def ws_request(hass, connection, msg):
         local_ai = msg["operation"] in ("ai_start", "ai_status")
         onboarding = msg["operation"] in ("setup_status", "setup_credentials", "setup_generate_key",
                                            "setup_public_certificate", "auth_banks", "auth_start", "auth_complete")
+        cash_fx = msg["operation"] == "cash_fx_sync"
         headers = {"X-Finance-Key": key.strip(), "Cache-Control": "no-store"}
         if bank_check:
             if not connection.remote or not msg.get("user_agent") or msg.get("payload"):
@@ -90,17 +91,21 @@ async def ws_request(hass, connection, msg):
         if onboarding and (msg["source"] != "production" or len(str(msg.get("payload", {}))) > 40000):
             connection.send_error(msg["id"], "finance_error", "Invalid setup request")
             return
+        if cash_fx and (msg["source"] != "production" or set(msg.get("payload", {})) != {"month"}):
+            connection.send_error(msg["id"], "finance_error", "Invalid FX request")
+            return
         method = "GET" if msg["operation"] == "ai_status" else "POST"
         url = (f"{callback_base}/internal/ai-status" if msg["operation"] == "ai_status" else
                f"{callback_base}/internal/ai-production" if msg["operation"] == "ai_start" else
                f"{callback_base}/internal/sync-production" if msg["operation"] == "bank_sync" else
+               f"{callback_base}/internal/cash-fx" if cash_fx else
                f"{callback_base}/internal/inspect-accounts" if bank_check else
                f"{callback_base}/internal/onboarding" if onboarding else api_url)
         async with session.request(
             method, url,
             headers=headers,
-            json=backend_body(msg, onboarding=onboarding, no_body=bank_check or local_ai),
-            timeout=ClientTimeout(total=600 if msg["operation"] == "bank_sync" else 90 if bank_check or onboarding else 20),
+            json=msg["payload"] if cash_fx else backend_body(msg, onboarding=onboarding, no_body=bank_check or local_ai),
+            timeout=ClientTimeout(total=600 if msg["operation"] == "bank_sync" else 90 if bank_check or onboarding or cash_fx else 20),
         ) as response:
             data = await response.json()
             if response.status != 200:

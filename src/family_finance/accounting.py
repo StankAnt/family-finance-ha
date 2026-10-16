@@ -261,11 +261,16 @@ def monthly_report(db: Session, year: int, month: int) -> dict:
     allocations = {a.transaction_id: a for a in db.scalars(select(MortgageAllocation).where(
         MortgageAllocation.transaction_id.in_([tx.id for tx in rows]))).all()} if rows else {}
     reimbursements = defaultdict(lambda: ZERO)
+    missing_cash_fx_ids = set()
     if rows:
         for receipt in db.scalars(select(CashEntry).where(
                 CashEntry.household_id == home.id, CashEntry.kind == "reimbursement",
                 CashEntry.transaction_id.in_([tx.id for tx in rows]))):
-            reimbursements[receipt.transaction_id] += receipt.amount
+            converted = pln(db, receipt.amount, receipt.currency, receipt.occurred_on)
+            if converted is None:
+                missing_cash_fx_ids.add(receipt.id)
+            else:
+                reimbursements[receipt.transaction_id] += converted
     categories = {item.id: item for item in db.scalars(select(Category).where(
         Category.household_id == home.id)).all()}
     projects = {item.id: item.name for item in db.scalars(select(Project).where(
@@ -374,7 +379,10 @@ def monthly_report(db: Session, year: int, month: int) -> dict:
     for entry in db.scalars(select(CashEntry).where(CashEntry.household_id == home.id,
             CashEntry.kind == "expense", CashEntry.occurred_on >= start,
             CashEntry.occurred_on < end)):
-        spend = -entry.amount
+        spend = pln(db, -entry.amount, entry.currency, entry.occurred_on)
+        if spend is None:
+            missing_cash_fx_ids.add(entry.id)
+            continue
         sums["spending"] += spend
         sums["cash_spending"] += spend
         sums["outflows_total"] += spend
@@ -392,9 +400,17 @@ def monthly_report(db: Session, year: int, month: int) -> dict:
             sums["exceptional_projects"] += spend
         else:
             sums["baseline_living"] += spend
-    sums["cashflow"] += sum((entry.amount for entry in db.scalars(select(CashEntry).where(
-        CashEntry.household_id == home.id, CashEntry.kind == "reimbursement",
-        CashEntry.occurred_on >= start, CashEntry.occurred_on < end))), ZERO)
+    for receipt in db.scalars(select(CashEntry).where(
+            CashEntry.household_id == home.id, CashEntry.kind == "reimbursement",
+            CashEntry.occurred_on >= start, CashEntry.occurred_on < end)):
+        converted = pln(db, receipt.amount, receipt.currency, receipt.occurred_on)
+        if converted is None:
+            missing_cash_fx_ids.add(receipt.id)
+        else:
+            sums["cashflow"] += converted
+    if missing_cash_fx_ids:
+        counts["cash_missing_fx"] = len(missing_cash_fx_ids)
+        counts["missing_fx"] += len(missing_cash_fx_ids)
     sums["outflows_without_mortgage_investments"] = (
         sums["outflows_total"] - sums["outflows_mortgage"] - sums["outflows_investments"])
     sums["outflows_total"] += ZERO
@@ -528,8 +544,16 @@ def position_report(db: Session, day: date) -> dict:
         required.add("mortgage_debt")
     for kind in required - {kind for kind, _ in seen}:
         gaps.append(kind)
-    parts["cash_on_hand"] = sum((entry.amount for entry in db.scalars(select(CashEntry).where(
-        CashEntry.household_id == home.id, CashEntry.occurred_on <= day))), ZERO)
+    cash_by_currency = defaultdict(lambda: ZERO)
+    for entry in db.scalars(select(CashEntry).where(
+            CashEntry.household_id == home.id, CashEntry.occurred_on <= day)):
+        cash_by_currency[entry.currency] += entry.amount
+    for code, amount in cash_by_currency.items():
+        value = pln(db, amount, code, day)
+        if value is None and amount:
+            gaps.append("cash_fx")
+        else:
+            parts["cash_on_hand"] += value or ZERO
     assets = parts["bank_cash"] + parts["cash_on_hand"] + parts["investment"] + parts["property"] + parts["other_asset"]
     debts = parts["mortgage_debt"] + parts["other_debt"]
     goals = []
@@ -572,7 +596,9 @@ def position_report(db: Session, day: date) -> dict:
     return {"as_of": str(day), "currency": "PLN",
             "components_pln": {key: str(value.quantize(CENT)) for key, value in sorted(parts.items())},
             "liquid_savings_pln": str(parts["bank_cash"].quantize(CENT)) if "account_balance" not in gaps and "account_fx" not in gaps else None,
-            "cash_on_hand_pln": str(parts["cash_on_hand"].quantize(CENT)),
+            "cash_on_hand_pln": str(parts["cash_on_hand"].quantize(CENT)) if "cash_fx" not in gaps else None,
+            "cash_on_hand_by_currency": {code: str(amount.quantize(CENT))
+                                         for code, amount in sorted(cash_by_currency.items())},
             "net_worth_pln": str((assets - debts).quantize(CENT)) if complete else None,
             "partial_net_worth_pln": str((assets - debts).quantize(CENT)),
             "complete": complete, "coverage_confirmed_as_of": str(declaration.as_of) if declaration else None,

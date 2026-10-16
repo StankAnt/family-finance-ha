@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import hmac
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+import re
 from threading import Lock
 from time import monotonic
 from urllib.parse import urlsplit
@@ -122,6 +123,29 @@ def create_app(settings: Settings, service: AuthorizationService | None = None) 
         def ai_status(request: Request) -> dict:
             check_internal(request)
             return ai_runner.status()
+
+        @app.post("/internal/cash-fx", include_in_schema=False)
+        def cash_fx(request: Request, body: dict) -> dict:
+            check_key(request)
+            month = body.get("month") if set(body) == {"month"} else None
+            if not isinstance(month, str) or not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", month):
+                raise HTTPException(status_code=400, detail="Invalid cash FX month")
+            year, number = map(int, month.split("-"))
+            if year < 2002 or year > 9998:
+                raise HTTPException(status_code=400, detail="Cash FX month is unavailable")
+            start = date(year, number, 1)
+            end = min(date.today(), date(year + (number == 12), number % 12 + 1, 1) - timedelta(days=1))
+            if start > end or start < date(2002, 1, 2):
+                raise HTTPException(status_code=400, detail="Cash FX month is unavailable")
+            engine = database_engine(settings.project_dir / "secrets" / "production_database_url_host")
+            try:
+                with Session(engine) as db, db.begin():
+                    added = sync_nbp(db, start, end)
+                return {"rates_added": added, "month": month}
+            except FinanceError as exc:
+                raise HTTPException(status_code=502, detail=str(exc)[:180]) from None
+            finally:
+                engine.dispose()
 
         @app.post("/internal/inspect-accounts", include_in_schema=False)
         def inspect_accounts(request: Request) -> dict:

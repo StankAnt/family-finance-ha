@@ -119,6 +119,8 @@ class FamilyFinanceCard extends HTMLElement {
           this.api("cash", { month: this.month })]);
         if (generation !== this._routeGeneration) return;
         this.overview = overview; this.review = review; this.cash = cash;
+        await this.ensureCashFx(this.month);
+        if (generation !== this._routeGeneration) return;
       } else if (reviewChanged) {
         const review = await this.api("review", this.reviewPayload());
         if (generation !== this._routeGeneration) return;
@@ -167,12 +169,32 @@ class FamilyFinanceCard extends HTMLElement {
     });
   }
   async reloadPeriod() {
+    const month = this.month;
     [this.overview, this.review, this.cash] = await Promise.all([
       this.api("overview", { month: this.month }),
       this.api("review", this.reviewPayload()),
       this.api("cash", { month: this.month }),
     ]);
+    await this.ensureCashFx(month);
     this.render();
+  }
+  async ensureCashFx(month) {
+    if (!this.cash?.missing_fx?.length) return;
+    this._cashFxTried ||= new Set();
+    const missingMonths = [...new Set(this.cash.missing_fx.map(item => item.date.slice(0, 7)))];
+    const needed = missingMonths.filter(value => !this._cashFxTried.has(value));
+    if (!needed.length) return;
+    try {
+      for (const value of needed) {
+        this._cashFxTried.add(value);
+        await this.api("cash_fx_sync", { month:value });
+      }
+      const [overview, cash] = await Promise.all([
+        this.api("overview", { month }), this.api("cash", { month })]);
+      if (this.month === month) { this.overview = overview; this.cash = cash; }
+    } catch (error) {
+      if (this.month === month) this.status("Курсы валют пока не обновились. Нажмите «Обновить курсы» на вкладке «Наличные».");
+    }
   }
   async refreshAiStatus() {
     if (this.source !== "production") return;

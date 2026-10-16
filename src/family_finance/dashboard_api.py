@@ -169,14 +169,25 @@ def _review(db: Session, payload: dict) -> dict:
             if converted is None:
                 missing_fx += 1
             else:
-                refunds = sum((row.amount for row in db.scalars(select(CashEntry).where(
-                    CashEntry.transaction_id == expense.id, CashEntry.kind == "reimbursement"))), 0)
+                refunds = 0
+                for row in db.scalars(select(CashEntry).where(
+                        CashEntry.transaction_id == expense.id, CashEntry.kind == "reimbursement")):
+                    value = pln(db, row.amount, row.currency, row.occurred_on)
+                    if value is None:
+                        missing_fx += 1
+                    else:
+                        refunds += value
                 total_pln += max(converted - refunds, 0)
         cash_query = select(CashEntry).where(CashEntry.household_id == home.id,
             CashEntry.kind == "expense")
         if project:
             cash_query = cash_query.where(CashEntry.project_id == project.id)
-            total_pln += sum((-row.amount for row in db.scalars(cash_query)), 0)
+            for row in db.scalars(cash_query):
+                converted = pln(db, -row.amount, row.currency, row.occurred_on)
+                if converted is None:
+                    missing_fx += 1
+                else:
+                    total_pln += converted
         project_total = {"amount_pln": str(total_pln), "transactions": len(expenses),
                          "missing_fx": missing_fx}
     suggestions = {item.transaction_id: item for item in db.scalars(select(DecisionSuggestion).where(
@@ -192,7 +203,9 @@ def _review(db: Session, payload: dict) -> dict:
     if row_ids:
         for receipt in db.scalars(select(CashEntry).where(CashEntry.kind == "reimbursement",
                 CashEntry.transaction_id.in_(row_ids))):
-            refund_amounts[receipt.transaction_id] = refund_amounts.get(receipt.transaction_id, 0) + receipt.amount
+            converted = pln(db, receipt.amount, receipt.currency, receipt.occurred_on)
+            if converted is not None:
+                refund_amounts[receipt.transaction_id] = refund_amounts.get(receipt.transaction_id, 0) + converted
     return {"total": total, "offset": offset, "project_total": project_total, "rows": [{
         "id": str(tx.id), "date": str(tx.transaction_date or tx.booking_date or tx.value_date or ""),
         "booking_date": str(tx.booking_date) if tx.booking_date else None,

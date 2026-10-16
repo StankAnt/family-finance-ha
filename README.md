@@ -154,10 +154,15 @@ amounts, dates, account identifiers, and full bank records are not sent.
 
 ## Cash and reimbursements
 
-The **Наличные** tab is a local PLN wallet. Enter an opening balance if you
+The **Наличные** tab is a local wallet for PLN, EUR and USD. Enter an opening balance separately for each currency if you
 already have cash, then record cash purchases with a category and optional
 project. The wallet balance is included in family assets. Cash purchases enter
-the same monthly spending chart as bank purchases.
+the same monthly spending chart as bank purchases. Cash amounts remain in their
+original currency. Expenses and reimbursements are converted to PLN using the
+NBP rate available on the transaction date; each currency's remaining balance
+is valued using the rate available at the report date. Weekend and holiday
+dates use the latest rate from the preceding seven days. The dashboard fetches
+missing NBP rates when needed and shows a gap if a rate is still unavailable.
 
 If you paid for someone else and they returned cash, open the **bank purchase**
 in **Операции**, choose **⋯ → Вернули наличными**, and record the amount and
@@ -165,7 +170,8 @@ receipt date. Partial reimbursements are supported. The returned amount reduces
 that purchase's family expense in the bank posting month and increases the cash
 wallet on the receipt date. It is not external income; the original bank outflow
 still shows the full bank payment. You can delete an incorrect cash entry from
-the wallet history. This flow currently supports completed PLN purchases.
+the wallet history. The original bank purchase must be completed and in PLN;
+the cash received may be PLN, EUR or USD.
 
 The wallet is local to the finance database. Entering cash does not contact the
 bank or send cash notes to MQTT or OpenAI. Back up the database before updates.

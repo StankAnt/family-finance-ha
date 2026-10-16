@@ -143,6 +143,10 @@ export const styles = `${tokens}
   .cash-link { cursor:pointer; }
   .cash-link:hover { border-color:var(--ff-accent); background:var(--ff-accent-soft); }
   .cash-actions { display:grid; gap:16px; }
+  .cash-balance-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:12px; margin-top:12px; }
+  .cash-currency-card { display:grid; gap:5px; padding:15px; border:1px solid var(--ff-border); border-radius:12px; }
+  .cash-currency-card strong { font-size:1.2rem; font-variant-numeric:tabular-nums; }
+  .cash-currency-card span { font-size:.82rem; color:var(--ff-muted); }
   .cash-actions h3 { margin:0; }
   .cash-switcher { display:flex; flex-wrap:wrap; gap:8px; }
   .cash-switch { border-radius:999px; }
