@@ -12,8 +12,12 @@ export function renderOnboarding(holder) {
   keyBlock.append(keySummary);
   const keyHelp = this.el("p", "Создайте новую пару на сервере или загрузите свой приватный PEM. В Enable Banking Control Panel загрузите только публичный сертификат. Приватный ключ туда не копируйте.", "muted");
   keyBlock.append(keyHelp);
-  const generate = this.el("button", "Создать пару ключей"); generate.type = "button";
+  const generate = this.el("button", state.has_key ? "Ключ уже сохранён" : "Создать пару ключей"); generate.type = "button";
   generate.disabled = !!state.has_key;
+  if (state.has_key) {
+    generate.title = "На этом сервере уже есть приватный ключ";
+    keyBlock.append(this.el("p", "Ключ уже настроен. Для действующего подключения новый ключ не нужен: используйте кнопку «Показать публичный сертификат». Замена ключа потребует обновить сертификат в Enable Banking и заново авторизовать счета.", "muted"));
+  }
   generate.onclick = () => this.busy(async () => {
     this.setupStatus = await this.api("setup_generate_key");
     this.render();
