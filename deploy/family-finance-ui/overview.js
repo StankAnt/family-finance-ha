@@ -126,11 +126,9 @@ export function renderOverview(holder) {
   const capital = this.el("section", undefined, "surface");
   capital.append(this.el("h3", `Капитал на ${position.as_of}`));
   const current = this.el("div", undefined, "metrics");
-  current.append(this.metric("Деньги на счетах", money(position.liquid_savings_pln),
-    position.missing_components?.includes("account_balance_estimated") ?
-      "Оценка на конец месяца: от более поздних остатков отняты последующие операции" :
-      "По учётным остаткам; сумма в PLN требует курсы валют"));
-  const cashMetric = this.metric("Наличные", position.cash_on_hand_pln == null ? "Нет курса" : money(position.cash_on_hand_pln),
+  current.append(this.metric("Всего денег", money(position.money_total_pln),
+    `На счетах: ${money(position.liquid_savings_pln)} · наличные: ${money(position.cash_on_hand_pln)}${position.missing_components?.includes("account_balance_estimated") ? ". Остатки счетов за прошлый месяц рассчитаны по сохранённым операциям" : ""}`));
+  const cashMetric = this.metric("Из них наличные", position.cash_on_hand_pln == null ? "Нет курса" : money(position.cash_on_hand_pln),
     Object.entries(position.cash_on_hand_by_currency || {}).map(([code, value]) => money(value, code)).join(" · ") ||
       "Учтённый остаток семейного кошелька", "soft");
   cashMetric.classList.add("cash-link"); cashMetric.tabIndex = 0; cashMetric.setAttribute("role", "link");
@@ -146,7 +144,7 @@ export function renderOverview(holder) {
         `По вашей записи от ${position.mortgage_debts[0].as_of}`) :
         "Добавьте остаток долга в разделе «Настройки и ввод»", "warm"));
   current.append(this.metric("Капитал семьи", position.complete ? money(position.net_worth_pln) : "Нет полного отчёта",
-    position.complete ? "Все компоненты учтены" : "Требуются оценки активов, долгов и подтверждение охвата", "soft"));
+    position.complete ? "Счета + наличные + инвестиции и другие активы − долги" : "Наличные включены в активы. Для полного итога нужны оценки активов, долгов и подтверждение охвата", "soft"));
   capital.append(current);
   if (position.accounts?.length) {
     const accounts = this.el("div", undefined, "account-list");

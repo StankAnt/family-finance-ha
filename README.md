@@ -165,7 +165,8 @@ should be checked against the bank, especially if a payment has not been split.
 
 The **Наличные** tab is a local wallet for PLN, EUR and USD. Enter an opening balance separately for each currency if you
 already have cash, then record cash purchases with a category and optional
-project. The wallet balance is included in family assets. Cash purchases enter
+project. The wallet balance is included once in family assets. **Всего денег**
+shows bank balances plus the wallet, with a breakdown of both amounts. Cash purchases enter
 the same monthly spending chart as bank purchases. Cash amounts remain in their
 original currency. Expenses and reimbursements are converted to PLN using the
 NBP rate available on the transaction date; each currency's remaining balance

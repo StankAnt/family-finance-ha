@@ -1,7 +1,7 @@
 {
   "domain": "family_finance",
   "name": "Family Finance dashboard bridge",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "documentation": "https://www.home-assistant.io/docs/",
   "dependencies": ["websocket_api"],
   "codeowners": [],

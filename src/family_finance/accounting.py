@@ -618,6 +618,8 @@ def position_report(db: Session, day: date) -> dict:
     return {"as_of": str(day), "currency": "PLN",
             "components_pln": {key: str(value.quantize(CENT)) for key, value in sorted(parts.items())},
             "liquid_savings_pln": str(parts["bank_cash"].quantize(CENT)) if "account_balance" not in gaps and "account_fx" not in gaps else None,
+            "money_total_pln": str((parts["bank_cash"] + parts["cash_on_hand"]).quantize(CENT))
+                if not {"account_balance", "account_fx", "cash_fx"}.intersection(gaps) else None,
             "cash_on_hand_pln": str(parts["cash_on_hand"].quantize(CENT)) if "cash_fx" not in gaps else None,
             "cash_on_hand_by_currency": {code: str(amount.quantize(CENT))
                                          for code, amount in sorted(cash_by_currency.items())},
