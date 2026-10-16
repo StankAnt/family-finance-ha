@@ -26,7 +26,7 @@ from .reader import online_account_types, online_headers
 from .classification import classify, pair_transfers, seed
 from .ai_worker import ProductionDecisionRunner
 from .sync import database_engine, sync_ais
-from .models import SyncRun, Transaction
+from .models import AccountBalanceSnapshot, SyncRun, Transaction
 from .notifications import count_new_unclassified, publish_new_unclassified
 from . import onboarding
 
@@ -173,7 +173,9 @@ def create_app(settings: Settings, service: AuthorizationService | None = None) 
                 with Session(engine) as db:
                     if background:
                         latest = db.scalar(select(SyncRun).order_by(SyncRun.started_at.desc()).limit(1))
-                        if latest and latest.started_at and (datetime.now(timezone.utc) -
+                        has_balances = latest and db.scalar(select(AccountBalanceSnapshot.id).where(
+                            AccountBalanceSnapshot.sync_run_id == latest.id).limit(1)) is not None
+                        if latest and latest.status == "SUCCESS" and has_balances and latest.started_at and (datetime.now(timezone.utc) -
                                 latest.started_at.astimezone(timezone.utc)) < timedelta(hours=6):
                             return {"skipped": "Recent bank sync"}
                     imported_before = db.scalar(select(func.max(Transaction.imported_at)))
@@ -181,7 +183,7 @@ def create_app(settings: Settings, service: AuthorizationService | None = None) 
                 accounts, rows = sync_ais(engine, settings,
                                           initial_from_date=today - timedelta(days=90),
                                           psu_headers=psu_headers,
-                                          transactions_only=background)
+                                          known_accounts_only=background)
                 fx_rates_updated = True
                 try:
                     with Session(engine) as db, db.begin():

@@ -30,7 +30,7 @@ administration endpoint binds to host loopback only.
    ```sh
    git clone https://github.com/StankAnt/family-finance-ha.git
    cd family-finance-ha
-   git checkout v0.1.11
+   git checkout v0.1.12
    ```
 2. Run `python3 distribution/bootstrap.py`. It creates local random database and
    API credentials, mode-600 files under `secrets/`, and `.env` with your UID/GID.
@@ -194,7 +194,7 @@ the moving `main` branch. From the same checkout used for installation:
 
 ```sh
 git fetch --tags origin
-git checkout v0.1.11                       # latest release tag
+git checkout v0.1.12                       # latest release tag
 python3 distribution/update.py \
   --config-dir /path/to/homeassistant/config \
   --ha-container homeassistant            # omit if HA has another restart method
@@ -219,7 +219,7 @@ Do not initialize a public repository from a personal working directory that
 contains old deployment configs or banking test data; publish only the curated
 distribution source after reviewing it.
 
-The HA integration checks for new bank operations every six hours and sends a
+The HA integration refreshes bank operations and account balances every six hours and sends a
 phone notification for new items requiring classification when a valid
 `--notify-service` is configured. The dashboard's **Отправить тестовый пуш**
 button verifies the selected HA notify service without contacting the bank.

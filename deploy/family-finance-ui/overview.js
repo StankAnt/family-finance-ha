@@ -164,6 +164,8 @@ export function renderOverview(holder) {
     "Остатки за прошлый месяц восстановлены из последующих банковских остатков и сохранённых операций. Это оценка: поздние проводки могут её изменить.", "banner"));
   if (position.missing_components?.includes("account_balance")) capital.append(this.el("p",
     "Для выбранной даты не хватает остатков по части счетов или история операций слишком старая для надёжного расчёта.", "banner"));
+  if (position.accounts?.some(account => account.booked != null && account.as_of < position.as_of && account.balance_source !== "calculated"))
+    capital.append(this.el("p", "Часть банковских остатков относится к более ранней дате — она указана у каждого счёта. Последующие списания могут ещё не отражаться в итоговой сумме. Обновите реальные операции, чтобы получить свежие остатки.", "banner"));
   const missing = (position.missing_components || []).filter(x => hasMortgage || x !== "mortgage_debt");
   if (missing.length) capital.append(this.el("p",
     `Для полного расчёта недостаёт: ${missing.map(x => ({account_fx:"курс валюты для счетов",cash_fx:"курс валюты для наличных",account_balance:"остаток счёта",account_balance_estimated:"подтверждённые остатки на эту дату",investment:"оценка инвестиций",property:"оценка недвижимости",mortgage_debt:"остаток ипотечного долга"}[x] || x)).join(", ")}.`, "muted"));

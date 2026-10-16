@@ -138,7 +138,7 @@ def sync_ais(engine: Engine, settings: Settings, *, from_date: date | None = Non
              overlap_days: int = 7,
              initial_from_date: date | None = None,
              psu_headers: dict[str, str] | None = None,
-             transactions_only: bool = False) -> tuple[int, int]:
+             known_accounts_only: bool = False) -> tuple[int, int]:
     if not 1 <= overlap_days <= 30:
         raise FinanceError("Overlap must be between 1 and 30 days")
     client = (EnableBankingClient(settings, psu_headers=psu_headers) if psu_headers
@@ -170,7 +170,7 @@ def sync_ais(engine: Engine, settings: Settings, *, from_date: date | None = Non
             run_id = run.id
         total = 0
         for uid in uids:
-            if transactions_only:
+            if known_accounts_only:
                 with Session(engine) as db:
                     connection = _connection(db, settings)
                     existing_account = db.scalar(select(Account).where(
@@ -183,12 +183,16 @@ def sync_ais(engine: Engine, settings: Settings, *, from_date: date | None = Non
                         if checkpoint and checkpoint.last_successful_to else initial_from_date)
                     account_id = existing_account.id
                 end = datetime.now(timezone.utc).date()
+                balances = client.request("GET", f"/accounts/{uid}/balances").get("balances")
+                if not isinstance(balances, list):
+                    raise FinanceError("Invalid account balances")
                 rows = _fetch_pages(client, uid, start, end)
                 with Session(engine) as db, db.begin():
                     account = db.get(Account, account_id)
                     run = db.get(SyncRun, run_id)
                     save_transactions(db, account, rows)
                     prune_pending_transactions(db, account, rows)
+                    save_balances(db, account, run, balances)
                     checkpoint = db.get(SyncCheckpoint, account.id)
                     if checkpoint is None:
                         checkpoint = SyncCheckpoint(account_id=account.id)
