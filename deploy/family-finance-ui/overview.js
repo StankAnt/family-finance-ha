@@ -141,7 +141,9 @@ export function renderOverview(holder) {
       money(position.mortgage_debts[0].amount, position.mortgage_debts[0].currency) :
       position.mortgage_debts?.length && !position.missing_components?.includes("valuation_fx") ?
         money(position.components_pln?.mortgage_debt) : "Нет данных",
-      position.mortgage_debts?.length === 1 ? `По вашей записи от ${position.mortgage_debts[0].as_of}` :
+      position.mortgage_debts?.length === 1 ? (position.mortgage_debts[0].calculated ?
+        `По остатку банка от ${position.mortgage_debts[0].basis_date} минус ${money(position.mortgage_debts[0].principal_since_snapshot, position.mortgage_debts[0].currency)} погашений тела по размеченным платежам до ${position.mortgage_debts[0].as_of}. Расчётная сумма; сверяйте с банком.` :
+        `По вашей записи от ${position.mortgage_debts[0].as_of}`) :
         "Добавьте остаток долга в разделе «Настройки и ввод»", "warm"));
   current.append(this.metric("Капитал семьи", position.complete ? money(position.net_worth_pln) : "Нет полного отчёта",
     position.complete ? "Все компоненты учтены" : "Требуются оценки активов, долгов и подтверждение охвата", "soft"));
@@ -171,7 +173,7 @@ export function renderOverview(holder) {
   const mortgage = this.el("div", undefined, "mortgage-guide");
   mortgage.append(this.el("h3", "Как учитывать ипотеку"),
     this.el("p", `Ипотек настроено: ${this.overview.source_status?.mortgages || 0}; платежей разбито: ${this.overview.source_status?.mortgage_allocations || 0}.`, "muted"),
-    this.el("p", "1. В настройках добавьте ипотеку. 2. У платежа выберите тип «Ипотека — платёж или тело». 3. Для обычного платежа впишите тело, проценты и комиссию из банковской выписки или графика; сумма частей должна равняться списанию. Для досрочного платежа нажмите «Всё в тело». 4. Обновляйте остаток ипотечного долга в настройках: банк не передаёт разбивку этого списания.", "muted"));
+    this.el("p", "1. В настройках добавьте ипотеку и известный остаток долга на дату. 2. У платежа выберите тип «Ипотека — платёж или тело». 3. Для обычного платежа впишите тело, проценты и комиссию из банка; для досрочного нажмите «Всё в тело». Система вычитает размеченное тело из последнего остатка. Сверяйте расчёт с банком: проценты и неразмеченные платежи долг не уменьшают.", "muted"));
   capital.append(mortgage);
   }
   if (position.goals?.length) {

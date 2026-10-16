@@ -152,6 +152,15 @@ tick the consent box. The key is stored locally in `secrets/openai/api_key`.
 The application sends redacted merchant/description text for classification;
 amounts, dates, account identifiers, and full bank records are not sent.
 
+## Mortgage balance
+
+Enter a bank-confirmed remaining debt with its date in **Настройки и ввод**.
+After that date, the dashboard subtracts principal from mortgage payments you
+have split into principal, interest and fees. Interest and fees do not reduce
+the debt. A newer bank-confirmed balance becomes the new starting point; older
+payments are not subtracted twice. The displayed result is a calculation and
+should be checked against the bank, especially if a payment has not been split.
+
 ## Cash and reimbursements
 
 The **Наличные** tab is a local wallet for PLN, EUR and USD. Enter an opening balance separately for each currency if you

@@ -61,7 +61,7 @@ export function renderInputs(holder) {
       async f => this.api("manual", {mortgages:[{name:f.get("name"), currency:f.get("currency") }]})));
     holder.append(mortgageSetup);
     if (this.options.mortgages.length) {
-      holder.append(this.el("p", "Остаток долга сохраняется отдельно от разбивки платежей. После сохранения откройте «Обзор»: там появятся сумма и дата записи. Выбранный месяц должен включать дату записи.", "muted"));
+      holder.append(this.el("p", "Введите подтверждённый банком остаток на дату после всех платежей этого дня. После этой даты система будет вычитать из него размеченное погашение тела. Новая запись остатка станет новой точкой отсчёта и не учтёт те же платежи повторно.", "muted"));
       holder.append(this.form("Остаток ипотеки по данным банка", [
       this.choice("Ипотека", "name", this.options.mortgages.map(x => [x.name, x.name])),
       this.field("Дата остатка", "as_of", "date", today),

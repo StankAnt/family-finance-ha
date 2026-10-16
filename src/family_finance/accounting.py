@@ -524,19 +524,41 @@ def position_report(db: Session, day: date) -> dict:
     seen = set()
     estimate_count = 0
     latest_mortgage_snapshots = {}
+    mortgage_debts = []
+    mortgages_by_name = {row.name: row for row in db.scalars(select(Mortgage).where(
+        Mortgage.household_id == home.id))}
     for snapshot in valuations:
         identity = (snapshot.kind, snapshot.name)
         if identity in seen:
             continue
         seen.add(identity)
+        amount = snapshot.amount
+        principal_since_snapshot = ZERO
+        calculated_debt = False
         if snapshot.kind == "mortgage_debt":
             latest_mortgage_snapshots[snapshot.name] = snapshot
-        value = pln(db, snapshot.amount, snapshot.currency, day)
+            mortgage = mortgages_by_name.get(snapshot.name)
+            if mortgage and mortgage.currency == snapshot.currency:
+                principal_since_snapshot = sum(db.scalars(select(MortgageAllocation.principal)
+                    .join(Transaction).where(MortgageAllocation.mortgage_id == mortgage.id,
+                        Transaction.status == "BOOK", Transaction.booking_date > snapshot.as_of,
+                        Transaction.booking_date <= day)), ZERO)
+                calculated_debt = principal_since_snapshot > 0
+                amount -= principal_since_snapshot
+                if amount < 0:
+                    gaps.append("mortgage_debt_overpaid")
+                    amount = ZERO
+            mortgage_debts.append({"name": snapshot.name, "amount": str(amount),
+                "currency": snapshot.currency, "as_of": str(day if calculated_debt else snapshot.as_of),
+                "basis_date": str(snapshot.as_of),
+                "principal_since_snapshot": str(principal_since_snapshot),
+                "calculated": calculated_debt})
+        value = pln(db, amount, snapshot.currency, day)
         if value is None:
             gaps.append("valuation_fx")
             continue
         parts[snapshot.kind] += value
-        estimate_count += int(snapshot.estimated)
+        estimate_count += int(snapshot.estimated or calculated_debt)
         if (day - snapshot.as_of).days > 90:
             stale.append(snapshot.kind)
     required = {"investment", "property"}
@@ -608,9 +630,7 @@ def position_report(db: Session, day: date) -> dict:
             "missing_components": sorted(set(gaps)),
             "stale_components": sorted(set(stale)), "estimated_component_count": estimate_count + calculated_balances,
             "goals": goals, "accounts": account_rows,
-            "mortgage_debts": [{"name": row.name, "amount": str(row.amount),
-                                "currency": row.currency, "as_of": str(row.as_of)}
-                               for row in latest_mortgage_snapshots.values()],
+            "mortgage_debts": mortgage_debts,
             "mortgage_reconciliation": reconciliation,
             "notes": ["Manual investment/property values exclude transfers already counted as bank cash.",
                       "Partial net worth omits missing components; do not use it as total net worth."]}
