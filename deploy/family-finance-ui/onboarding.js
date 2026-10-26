@@ -1,9 +1,11 @@
 export function renderOnboarding(holder) {
   const state = this.setupStatus || {};
+  const consentStatus = this.overview?.source_status?.consent_status;
+  const needsAuthorization = ["REAUTH_REQUIRED", "PARTIAL"].includes(consentStatus);
   const section = this.el("section", undefined, "surface onboarding");
   section.append(this.el("h3", "Подключение банка"),
     this.el("p", "Настройка доступна только администратору Home Assistant. Ключ хранится на этом сервере; ссылка авторизации и итоговый URL обрабатываются здесь.", "muted"));
-  const progress = this.el("p", `Ключ: ${state.has_key ? "готов" : "не добавлен"} · UUID приложения: ${state.has_application_id ? "готов" : "не добавлен"} · Банковская сессия: ${state.has_session ? "есть" : "нет"}`, "muted");
+  const progress = this.el("p", `Ключ: ${state.has_key ? "готов" : "не добавлен"} · UUID приложения: ${state.has_application_id ? "готов" : "не добавлен"} · Банковский доступ: ${needsAuthorization ? "требуется повторная авторизация" : state.has_session ? "сессия сохранена" : "не подключён"}`, "muted");
   section.append(progress);
   if (this.authorizationError) section.append(this.el("p", this.authorizationError, "banner"));
 
@@ -79,7 +81,7 @@ export function renderOnboarding(holder) {
   appBlock.append(this.el("p", "Создайте AIS приложение в Control Panel, загрузите публичный сертификат и зарегистрируйте этот же Redirect URL. Адрес HA в домашней сети может начинаться с http://, если Control Panel его примет. Браузер, завершающий вход в банк, должен видеть HA по этому адресу. После входа итоговый адрес заполнится ниже; если это не случилось, скопируйте его из адресной строки.", "muted"), appForm);
   section.append(appBlock);
 
-  const authBlock = this.el("details", undefined, "onboarding-step"); authBlock.open = state.has_key && state.has_application_id && !state.has_session;
+  const authBlock = this.el("details", undefined, "onboarding-step"); authBlock.open = state.has_key && state.has_application_id && (!state.has_session || needsAuthorization);
   authBlock.append(this.el("summary", "3. Авторизация счетов"));
   const bank = this.el("input"); bank.placeholder = "Название банка из списка";
   bank.setAttribute("aria-label", "Название банка в Enable Banking");

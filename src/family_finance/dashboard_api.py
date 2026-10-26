@@ -264,12 +264,15 @@ def execute(db: Session, operation: str, payload: dict) -> dict:
         _, end = _month_bounds(year, month)
         as_of = min(today, end - timedelta(days=1))
         latest = db.scalar(select(SyncRun).order_by(SyncRun.started_at.desc()).limit(1))
+        connection = db.scalar(select(BankConnection).order_by(BankConnection.last_checked_at.desc()).limit(1))
         return {"month": monthly_report(db, year, month),
                 "position": position_report(db, as_of),
                 "source_status": {
                     "accounts": db.scalar(select(func.count()).select_from(Account)) or 0,
                     "transactions": db.scalar(select(func.count()).select_from(Transaction)) or 0,
                     "last_sync": latest.status if latest else "NEVER",
+                    "consent_status": connection.consent_status if connection else "UNKNOWN",
+                    "consent_valid_until": connection.consent_valid_until.isoformat() if connection and connection.consent_valid_until else None,
                     "ai_checked": db.scalar(select(func.count()).select_from(DecisionSuggestion)) or 0,
                     "ai_applied": db.scalar(select(func.count()).select_from(DecisionSuggestion).where(
                         DecisionSuggestion.status == "APPLIED")) or 0,

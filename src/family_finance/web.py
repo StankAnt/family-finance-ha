@@ -26,7 +26,7 @@ from .reader import online_account_types, online_headers
 from .classification import classify, pair_transfers, seed
 from .ai_worker import ProductionDecisionRunner
 from .sync import database_engine, sync_ais
-from .models import AccountBalanceSnapshot, SyncRun, Transaction
+from .models import AccountBalanceSnapshot, BankConnection, SyncRun, Transaction
 from .notifications import count_new_unclassified, publish_new_unclassified
 from . import onboarding
 
@@ -175,7 +175,8 @@ def create_app(settings: Settings, service: AuthorizationService | None = None) 
                         latest = db.scalar(select(SyncRun).order_by(SyncRun.started_at.desc()).limit(1))
                         has_balances = latest and db.scalar(select(AccountBalanceSnapshot.id).where(
                             AccountBalanceSnapshot.sync_run_id == latest.id).limit(1)) is not None
-                        if latest and latest.status == "SUCCESS" and has_balances and latest.started_at and (datetime.now(timezone.utc) -
+                        connection = db.get(BankConnection, latest.connection_id) if latest else None
+                        if latest and connection and connection.consent_status == "AUTHORIZED" and latest.status == "SUCCESS" and has_balances and latest.started_at and (datetime.now(timezone.utc) -
                                 latest.started_at.astimezone(timezone.utc)) < timedelta(hours=6):
                             return {"skipped": "Recent bank sync"}
                     imported_before = db.scalar(select(func.max(Transaction.imported_at)))

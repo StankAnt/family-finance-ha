@@ -22,7 +22,7 @@ from .mock_import import _transaction, read_statement
 from .models import Account, BankConnection, Household, SyncCheckpoint, SyncRun, Transaction, now
 from .provider import EnableBankingClient
 from .secrets import FinanceError, read_private, uuid_text
-from .session_store import session_ids
+from .session_store import AuthorizationRequired, authorized_sessions
 
 
 def database_engine(path: Path) -> Engine:
@@ -145,12 +145,16 @@ def sync_ais(engine: Engine, settings: Settings, *, from_date: date | None = Non
               else EnableBankingClient(settings))
     run_id = None
     try:
-        sessions = [client.request("GET", f"/sessions/{session_id}")
-                    for session_id in session_ids(settings)]
+        with Session(engine) as db, db.begin():
+            connection = _connection(db, settings)
+            connection.last_checked_at = now()
+            run = SyncRun(connection_id=connection.id, source="ais")
+            db.add(run)
+            db.flush()
+            run_id = run.id
+        sessions = authorized_sessions(settings, client)
         uids = []
         for provider_session in sessions:
-            if provider_session.get("status") != "AUTHORIZED":
-                raise FinanceError("AIS consent is not authorized")
             accounts = provider_session.get("accounts")
             if not isinstance(accounts, list):
                 raise FinanceError("Session account list is invalid")
@@ -161,64 +165,34 @@ def sync_ais(engine: Engine, settings: Settings, *, from_date: date | None = Non
         with Session(engine) as db, db.begin():
             connection = _connection(db, settings)
             connection.consent_status = "AUTHORIZED"
-            valid_until = [_consent_until(item.get("valid_until")) for item in sessions]
+            valid_until = [_consent_until(item.get("valid_until") or
+                           (item.get("access") or {}).get("valid_until")) for item in sessions]
             connection.consent_valid_until = min((value for value in valid_until if value), default=None)
             connection.last_checked_at = now()
-            run = SyncRun(connection_id=connection.id, source="ais")
-            db.add(run)
-            db.flush()
-            run_id = run.id
         total = 0
         for uid in uids:
+            account_id = None
             if known_accounts_only:
                 with Session(engine) as db:
                     connection = _connection(db, settings)
                     existing_account = db.scalar(select(Account).where(
                         Account.connection_id == connection.id, Account.provider_uid == uid))
-                    if existing_account is None:
-                        continue
-                    checkpoint = db.get(SyncCheckpoint, existing_account.id)
-                    start = None if full else from_date or (
-                        checkpoint.last_successful_to - timedelta(days=overlap_days)
-                        if checkpoint and checkpoint.last_successful_to else initial_from_date)
-                    account_id = existing_account.id
-                end = datetime.now(timezone.utc).date()
-                balances = client.request("GET", f"/accounts/{uid}/balances").get("balances")
-                if not isinstance(balances, list):
-                    raise FinanceError("Invalid account balances")
-                rows = _fetch_pages(client, uid, start, end)
-                with Session(engine) as db, db.begin():
-                    account = db.get(Account, account_id)
-                    run = db.get(SyncRun, run_id)
-                    save_transactions(db, account, rows)
-                    prune_pending_transactions(db, account, rows)
-                    save_balances(db, account, run, balances)
-                    checkpoint = db.get(SyncCheckpoint, account.id)
-                    if checkpoint is None:
-                        checkpoint = SyncCheckpoint(account_id=account.id)
-                        db.add(checkpoint)
-                    checkpoint.last_successful_to = end
-                    checkpoint.last_successful_at = now()
-                    checkpoint.last_run_id = run_id
-                    run.account_count += 1
-                    run.transaction_count += len(rows)
-                    total += len(rows)
-                continue
-            details = client.request("GET", f"/accounts/{uid}/details")
+                    account_id = existing_account.id if existing_account else None
+            details = client.request("GET", f"/accounts/{uid}/details") if account_id is None else None
             balances = client.request("GET", f"/accounts/{uid}/balances").get("balances")
             if not isinstance(balances, list):
                 raise FinanceError("Invalid account balances")
             with Session(engine) as db, db.begin():
                 connection = _connection(db, settings)
-                account = _account(db, connection, uid, details)
+                account = db.get(Account, account_id) if account_id else _account(db, connection, uid, details)
+                account_id = account.id
                 checkpoint = db.get(SyncCheckpoint, account.id)
                 start = None if full else from_date or (checkpoint.last_successful_to - timedelta(days=overlap_days)
                                       if checkpoint and checkpoint.last_successful_to else initial_from_date)
             end = datetime.now(timezone.utc).date()
             rows = _fetch_pages(client, uid, start, end)
             with Session(engine) as db, db.begin():
-                connection = _connection(db, settings)
-                account = _account(db, connection, uid, details)
+                account = db.get(Account, account_id)
                 run = db.get(SyncRun, run_id)
                 inserted, updated = save_transactions(db, account, rows)
                 prune_pending_transactions(db, account, rows)
@@ -235,6 +209,10 @@ def sync_ais(engine: Engine, settings: Settings, *, from_date: date | None = Non
                 total += len(rows)
         with Session(engine) as db, db.begin():
             run = db.get(SyncRun, run_id)
+            missing_accounts = db.scalar(select(Account.id).where(
+                Account.connection_id == run.connection_id, Account.active.is_(True),
+                Account.provider_uid.not_in(uids)).limit(1))
+            db.get(BankConnection, run.connection_id).consent_status = "PARTIAL" if missing_accounts else "AUTHORIZED"
             run.status = "SUCCESS"
             run.finished_at = now()
         return len(uids), total
@@ -244,7 +222,10 @@ def sync_ais(engine: Engine, settings: Settings, *, from_date: date | None = Non
                 run = db.get(SyncRun, run_id)
                 if run:
                     run.status = "FAILED"
-                    run.error_code = ("PROVIDER" if isinstance(exc, FinanceError) else "INTERNAL")
+                    run.error_code = ("REAUTH_REQUIRED" if isinstance(exc, AuthorizationRequired) else
+                                      "PROVIDER" if isinstance(exc, FinanceError) else "INTERNAL")
+                    if isinstance(exc, AuthorizationRequired):
+                        db.get(BankConnection, run.connection_id).consent_status = "REAUTH_REQUIRED"
                     run.finished_at = now()
         raise
     finally:

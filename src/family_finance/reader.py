@@ -11,7 +11,7 @@ from .provider import EnableBankingClient
 from .secrets import FinanceError, uuid_text
 from .secrets import read_private
 from .config import Settings
-from .session_store import session_ids
+from .session_store import authorized_sessions
 
 
 def transaction_summary(rows: list[dict[str, Any]]) -> str:
@@ -85,10 +85,7 @@ def online_account_types(settings: Settings, user_ip: str, user_agent: str) -> d
     client = EnableBankingClient(settings)
     try:
         accounts = []
-        for session_id in session_ids(settings):
-            session = client.request("GET", f"/sessions/{session_id}")
-            if session.get("status") != "AUTHORIZED":
-                raise FinanceError("Bank authorization is not active")
+        for session in authorized_sessions(settings, client):
             session_accounts = session.get("accounts")
             if not isinstance(session_accounts, list):
                 raise FinanceError("Invalid authorized account list")

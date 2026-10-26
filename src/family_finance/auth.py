@@ -28,11 +28,15 @@ class AuthorizationService:
         if redirect_url not in app.get("redirect_urls", []):
             raise FinanceError("Redirect URL is not registered on this application")
         banks = self.client.request("GET", "/aspsps", params={"country": "PL"}).get("aspsps", [])
-        if not any(isinstance(bank, dict) and bank.get("name") == bank_name and
-                   bank.get("country") == "PL" for bank in banks):
+        selected_bank = next((bank for bank in banks if isinstance(bank, dict) and
+                              bank.get("name") == bank_name and bank.get("country") == "PL"), None)
+        if selected_bank is None:
             raise FinanceError("Bank is not in the Polish ASPSP list")
+        maximum = selected_bank.get("maximum_consent_validity", 180 * 86400)
+        if type(maximum) is not int or maximum <= 0:
+            raise FinanceError("Bank consent validity is unavailable")
         state = secrets.token_urlsafe(32)
-        valid_until = (datetime.now(timezone.utc) + timedelta(days=7)).isoformat()
+        valid_until = (datetime.now(timezone.utc) + timedelta(seconds=min(maximum, 180 * 86400))).isoformat()
         response = self.client.request("POST", "/auth", body={
             "access": {"valid_until": valid_until, "balances": True, "transactions": True},
             "aspsp": {"name": bank_name, "country": "PL"}, "state": state,

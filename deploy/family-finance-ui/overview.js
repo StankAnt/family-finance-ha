@@ -4,12 +4,22 @@ import { money, monthTitle } from "./format.js";
 export function renderOverview(holder) {
   const month = this.overview.month, position = this.overview.position, a = month.amounts_pln;
   const hasMortgage = Boolean(this.options?.mortgages?.length);
+  const consentStatus = this.overview.source_status?.consent_status;
   holder.append(this.heading(`Обзор · ${monthTitle(month.period)}`,
     "Реальные счета. Месячные суммы считаются по дате проведения банком; в списке операций показывается дата покупки, если банк её передал. Суммы в PLN."));
+  if (["REAUTH_REQUIRED", "PARTIAL"].includes(consentStatus)) {
+    const reconnect = this.el("div", undefined, "banner");
+    reconnect.append(this.el("span", consentStatus === "PARTIAL" ?
+      "Часть счетов больше недоступна. Подтвердите доступ в банке повторно для их владельца." :
+      "Срок банковского доступа истёк. Для новых операций и остатков нужно снова подтвердить доступ в банке."));
+    const open = this.el("button", "Подключить банк заново", "primary"); open.type = "button";
+    open.onclick = () => { this.tab = "inputs"; this.drawTabs(); this.render(); };
+    reconnect.append(open); holder.append(reconnect);
+  }
   if (this.source === "production" && !this.overview.source_status?.transactions) {
     holder.append(this.el("div", "Операции ещё не загружены из банка. Нажмите «Обновить реальные операции» ниже.", "banner"));
   }
-  if (this.source === "production" && this.overview.source_status?.last_sync === "FAILED") {
+  if (this.source === "production" && this.overview.source_status?.last_sync === "FAILED" && consentStatus !== "REAUTH_REQUIRED") {
     holder.append(this.el("div", "Последнее обновление банка не завершилось. Данные могут быть неполными; проверьте сообщение об ошибке перед повтором.", "banner"));
   }
   const complete = month.living_cost_complete;
