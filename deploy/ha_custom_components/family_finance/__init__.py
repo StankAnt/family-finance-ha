@@ -34,7 +34,7 @@ AI_STATUS_URL = "http://127.0.0.1:8765/internal/ai-status"
     vol.Required("operation"): vol.In(("overview", "options", "review", "bank_accounts", "bank_sync", "ai_start", "ai_status", "test_notification",
                                        "setup_status", "setup_credentials", "setup_generate_key", "setup_public_certificate", "auth_banks", "auth_start", "auth_complete", "correct", "correct_mortgage", "manual",
                                        "transfers", "decide_transfer", "manual_pair", "project", "category", "rule",
-                                       "cash", "cash_add", "cash_delete", "cash_fx_sync")),
+                                       "cash", "cash_add", "cash_delete", "cash_fx_sync", "purchase_shares", "return_link", "return_unlink")),
     vol.Optional("payload", default={}): dict,
     vol.Optional("source", default="production"): vol.In(("production",)),
     vol.Optional("user_agent"): vol.All(str, vol.Length(min=1, max=512)),

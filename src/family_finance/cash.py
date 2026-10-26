@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from .accounting import currency, money, pln, rate
 from .classification import category_by_path, household
-from .models import Account, BankConnection, CashEntry, Category, FxRate, Project, Transaction
+from .models import Account, BankConnection, CashEntry, Category, FxRate, Project, PurchaseShare, Transaction
 from .secrets import FinanceError
 
 CENT = Decimal("0.01")
@@ -38,7 +38,7 @@ def cash_balances(db: Session, day: date) -> dict[str, Decimal]:
     home = household(db)
     balances: dict[str, Decimal] = {}
     for row in db.scalars(select(CashEntry).where(
-            CashEntry.household_id == home.id, CashEntry.occurred_on <= day)):
+            CashEntry.household_id == home.id, CashEntry.occurred_on <= day, CashEntry.affects_wallet.is_(True))):
         balances[row.currency] = balances.get(row.currency, Decimal(0)) + row.amount
     return balances
 
@@ -59,7 +59,7 @@ def _rate_date(db: Session, code: str, day: date) -> str | None:
 
 def _ensure_nonnegative(db: Session, home_id: UUID, day: date, code: str, delta: Decimal) -> None:
     rows = db.scalars(select(CashEntry).where(CashEntry.household_id == home_id,
-            CashEntry.currency == code)
+            CashEntry.currency == code, CashEntry.affects_wallet.is_(True))
         .order_by(CashEntry.occurred_on)).all()
     balance = Decimal(0)
     current_day = None
@@ -142,6 +142,8 @@ def cash_report(db: Session, month: str) -> dict:
         "spent": str(spent.quantize(CENT)) if not spent_missing else None,
         "rows": [{"id": str(row.id), "date": str(row.occurred_on), "kind": row.kind,
                   "amount": str(row.amount), "currency": row.currency,
+                  "affects_wallet": row.affects_wallet,
+                  "person": db.get(PurchaseShare, row.share_id).person if row.share_id else None,
                   "amount_pln": str(history_pln[row.id]) if history_pln[row.id] is not None else None,
                   "rate_date": _rate_date(db, row.currency, row.occurred_on),
                   "note": row.note or "",
@@ -157,7 +159,7 @@ def cash_report(db: Session, month: str) -> dict:
 def add_cash(db: Session, payload: dict) -> dict:
     kind = payload.get("kind")
     required = {"kind", "date", "amount"}
-    optional = {"transaction_id", "category", "project", "note", "currency"}
+    optional = {"transaction_id", "category", "project", "note", "currency", "affects_wallet", "share_id"}
     if kind not in {"opening", "reimbursement", "expense"} or required - set(payload) or set(payload) - required - optional:
         raise FinanceError("Invalid cash entry fields")
     home = household(db)
@@ -170,12 +172,16 @@ def add_cash(db: Session, payload: dict) -> dict:
     tx_id = None
     category_id = None
     project_id = None
+    share_id = None
+    affects_wallet = payload.get("affects_wallet", True)
+    if not isinstance(affects_wallet, bool) or (kind != "reimbursement" and (not affects_wallet or payload.get("share_id"))):
+        raise FinanceError("Выбор кошелька и участника доступен только для возврата")
     if kind == "opening":
         if db.scalar(select(CashEntry.id).where(CashEntry.household_id == home.id,
                 CashEntry.kind == "opening", CashEntry.currency == code).limit(1)):
             raise FinanceError("Opening balance for this currency already exists")
         earliest = db.scalar(select(CashEntry.occurred_on).where(
-            CashEntry.household_id == home.id, CashEntry.currency == code)
+            CashEntry.household_id == home.id, CashEntry.currency == code, CashEntry.affects_wallet.is_(True))
             .order_by(CashEntry.occurred_on).limit(1))
         if earliest and day > earliest:
             raise FinanceError("Opening balance date must be before other cash entries")
@@ -188,26 +194,24 @@ def add_cash(db: Session, payload: dict) -> dict:
             tx_id = UUID(str(payload["transaction_id"]))
         except ValueError as exc:
             raise FinanceError("Invalid bank purchase") from exc
-        tx = db.scalar(select(Transaction).join(Account).join(BankConnection).where(
-            Transaction.id == tx_id, BankConnection.household_id == home.id))
-        if tx is None or tx.status != "BOOK" or tx.currency != "PLN" or tx.amount >= 0 or \
-                tx.economic_type not in {"consumption", "project_expense", "unclassified"}:
-            raise FinanceError("Select a completed PLN purchase")
+        from types import SimpleNamespace
+        from .purchase_returns import purchase, cash_in_purchase_currency, paid_share, refund_capacity
+        tx = purchase(db, tx_id, lock=True)
         if day < (tx.transaction_date or tx.booking_date or day):
             raise FinanceError("Cash cannot be received before the purchase")
-        converted = pln(db, amount, code, day)
-        if converted is None:
-            raise FinanceError("Exchange rate for the reimbursement date is missing")
-        prior_rows = db.scalars(select(CashEntry).where(
-            CashEntry.household_id == home.id, CashEntry.kind == "reimbursement",
-            CashEntry.transaction_id == tx_id)).all()
-        prior_values = [pln(db, row.amount, row.currency, row.occurred_on)
-                        for row in prior_rows]
-        if any(value is None for value in prior_values):
-            raise FinanceError("Exchange rate for an earlier reimbursement is missing")
-        prior = sum(prior_values, Decimal(0))
-        if prior + converted > -tx.amount:
-            raise FinanceError("Total reimbursements cannot exceed the purchase")
+        converted = cash_in_purchase_currency(db, SimpleNamespace(amount=amount, currency=code, occurred_on=day), tx)
+        if payload.get("share_id"):
+            share = db.get(PurchaseShare, UUID(str(payload["share_id"])))
+            if share is None or share.purchase_id != tx.id:
+                raise FinanceError("Выберите участника этой покупки")
+            share_id = share.id
+            capacity = share.amount - paid_share(db, share, tx)
+        else:
+            if db.scalar(select(PurchaseShare.id).where(PurchaseShare.purchase_id == tx.id).limit(1)):
+                raise FinanceError("Выберите, кто вернул деньги")
+            capacity = refund_capacity(db, tx)
+        if converted > capacity:
+            raise FinanceError("Возврат превышает остаток покупки или долг участника")
     else:
         if payload.get("transaction_id"):
             raise FinanceError("A cash expense is not a bank transaction")
@@ -228,7 +232,8 @@ def add_cash(db: Session, payload: dict) -> dict:
         _ensure_nonnegative(db, home.id, day, code, -amount)
     entry = CashEntry(household_id=home.id, occurred_on=day,
         amount=-amount if kind == "expense" else amount, currency=code, kind=kind,
-        transaction_id=tx_id, category_id=category_id, project_id=project_id, note=note)
+        transaction_id=tx_id, category_id=category_id, project_id=project_id, note=note,
+        affects_wallet=affects_wallet, share_id=share_id)
     db.add(entry)
     db.commit()
     return {"saved": 1, "id": str(entry.id)}
@@ -248,9 +253,10 @@ def delete_cash(db: Session, payload: dict) -> dict:
         raise FinanceError("Cash entry not found")
     if entry.kind == "opening" and db.scalar(select(CashEntry.id).where(
             CashEntry.household_id == home.id, CashEntry.currency == entry.currency,
+            CashEntry.affects_wallet.is_(True),
             CashEntry.id != entry.id).limit(1)):
         raise FinanceError("Delete later cash entries before deleting the opening balance")
-    if entry.amount > 0:
+    if entry.amount > 0 and entry.affects_wallet:
         _ensure_nonnegative(db, home.id, entry.occurred_on, entry.currency, -entry.amount)
     db.delete(entry)
     db.commit()

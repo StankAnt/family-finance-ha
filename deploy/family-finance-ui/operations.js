@@ -1,4 +1,5 @@
 import { TYPE_INFO, categoryChoices, categoryLabel, money, monthTitle } from "./format.js";
+import { renderReturnSelection } from "./purchase-returns.js";
 
 export async function saveCorrection(tx, values, button, message) {
   button.disabled = true;
@@ -88,6 +89,7 @@ export function renderReview(holder) {
       `${summary.transactions} расходов${summary.missing_fx ? ` · ${summary.missing_fx} без курса валюты не включены` : ""}`, "soft"));
   }
   this.renderPairSelection(holder);
+  renderReturnSelection.call(this, holder);
   if (!this.review.rows.length) holder.append(this.el("div",
     this.search ? "По запросу ничего не найдено." :
     this.filter === "unclassified" ? "Нет операций, требующих разметки, с такими фильтрами." : "Операций с такими фильтрами нет.",
@@ -124,7 +126,10 @@ export function appendReviewRow(list, row, tx) {
   details.append(this.el("strong", tx.description || "Без описания"),
     this.el("small", [tx.bank_status !== "BOOK" ? "Ожидает проведения" :
       categoryLabel(tx.category) || TYPE_INFO[tx.economic_type]?.[0] || "Без категории",
-      tx.project ? `Проект: ${tx.project}` : ""].filter(Boolean).join(" · ")));
+      tx.project ? `Проект: ${tx.project}` : "",
+      tx.return_candidates?.length ? "Возможный возврат — проверьте связь" : "",
+      tx.linked_return ? "Связан с покупкой" : "",
+      tx.purchase?.shares?.length ? "Есть доли других участников" : ""].filter(Boolean).join(" · ")));
   const amount = this.el("strong", money(tx.amount, tx.currency),
     Number(tx.amount) >= 0 ? "transaction-list-amount in" : "transaction-list-amount");
   summary.append(date, details, amount);

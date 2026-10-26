@@ -30,7 +30,7 @@ administration endpoint binds to host loopback only.
    ```sh
    git clone https://github.com/StankAnt/family-finance-ha.git
    cd family-finance-ha
-   git checkout v0.1.13
+   git checkout v0.1.14
    ```
 2. Run `python3 distribution/bootstrap.py`. It creates local random database and
    API credentials, mode-600 files under `secrets/`, and `.env` with your UID/GID.
@@ -176,12 +176,31 @@ missing NBP rates when needed and shows a gap if a rate is still unavailable.
 
 If you paid for someone else and they returned cash, open the **bank purchase**
 in **Операции**, choose **⋯ → Вернули наличными**, and record the amount and
-receipt date. Partial reimbursements are supported. The returned amount reduces
-that purchase's family expense in the bank posting month and increases the cash
-wallet on the receipt date. It is not external income; the original bank outflow
+receipt date. Partial reimbursements are supported. Enable **Добавить полученные деньги
+в наличный кошелёк** only when the receipt should increase the wallet; it is off
+by default in the dashboard. The returned amount reduces that purchase's family
+expense in the bank posting month. It is not external income; the original bank outflow
 still shows the full bank payment. You can delete an incorrect cash entry from
-the wallet history. The original bank purchase must be completed and in PLN;
-the cash received may be PLN, EUR or USD.
+the wallet history. Completed purchases and cash receipts may be in PLN, EUR or USD.
+
+For shared purchases, use **⋯ → Оплатил за других**. Enter each participant and
+their share; the remainder is the family's
+expense. The dashboard tracks partial cash and bank repayments by participant.
+Outstanding amounts appear under **Вам должны вернуть** and are included in family
+assets, separately from bank and cash balances. When splitting a purchase that
+already has repayments, select who made each earlier repayment; this keeps the
+expense and wallet from being adjusted twice.
+
+For store refunds, the incoming bank transaction offers possible purchases with
+matching merchant text, currency, amount and dates. Confirm the association; it
+is never applied automatically. You may also choose a debit and credit manually
+through their **⋯** menus. A bank repayment from a participant uses the same
+selection panel with **Вернули за другого человека** and the participant's name.
+Bank links currently match the full incoming transaction to one purchase in the
+same currency; multiple partial receipts may link to that purchase. Confirmed
+refunds reduce the original purchase month's category and project, while the
+cashflow follows the actual receipt date. The link can be undone to restore the
+incoming transaction's previous classification.
 
 The wallet is local to the finance database. Entering cash does not contact the
 bank or send cash notes to MQTT or OpenAI. Back up the database before updates.
@@ -194,7 +213,7 @@ the moving `main` branch. From the same checkout used for installation:
 
 ```sh
 git fetch --tags origin
-git checkout v0.1.13                       # latest release tag
+git checkout v0.1.14                       # latest release tag
 python3 distribution/update.py \
   --config-dir /path/to/homeassistant/config \
   --ha-container homeassistant            # omit if HA has another restart method

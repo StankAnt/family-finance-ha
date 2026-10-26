@@ -145,6 +145,8 @@ export function renderOverview(holder) {
   cashMetric.onclick = () => { this.tab = "cash"; this.drawTabs(); this.render(); };
   cashMetric.onkeydown = event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); cashMetric.click(); } };
   current.append(cashMetric);
+  if (position.receivables?.rows?.length) current.append(this.metric("Вам должны вернуть", money(position.receivables.amount_pln),
+    "Не входит в «Всего денег». Учтено в капитале семьи как деньги к возврату", "soft"));
   if (hasMortgage) current.append(this.metric("Остаток ипотеки", position.mortgage_debts?.length === 1 ?
       money(position.mortgage_debts[0].amount, position.mortgage_debts[0].currency) :
       position.mortgage_debts?.length && !position.missing_components?.includes("valuation_fx") ?
@@ -154,8 +156,24 @@ export function renderOverview(holder) {
         `По вашей записи от ${position.mortgage_debts[0].as_of}`) :
         "Добавьте остаток долга в разделе «Настройки и ввод»", "warm"));
   current.append(this.metric("Капитал семьи", position.complete ? money(position.net_worth_pln) : "Нет полного отчёта",
-    position.complete ? "Счета + наличные + инвестиции и другие активы − долги" : "Наличные включены в активы. Для полного итога нужны оценки активов, долгов и подтверждение охвата", "soft"));
+    position.complete ? "Счета + наличные + деньги к возврату + другие активы − долги" : "Наличные и деньги к возврату включены в активы. Для полного итога нужны оценки активов, долгов и подтверждение охвата", "soft"));
   capital.append(current);
+  if (position.receivables?.rows?.length) {
+    const owed = this.el("details", undefined, "purchase-summary");
+    owed.append(this.el("summary", `Кто должен вернуть деньги · ${position.receivables.rows.length}`));
+    for (const debt of position.receivables.rows) {
+      const line = this.el("div", undefined, "purchase-person");
+      line.append(this.el("strong", debt.person), this.el("span", `${money(debt.amount, debt.currency)} · покупка ${debt.date}`));
+      const open = this.el("button", "Открыть покупку"); open.type = "button";
+      open.onclick = () => this.busy(async () => {
+        Object.assign(this, {tab:"review", reviewScope:"all", filter:"all", search:debt.date,
+          categoryFilter:"", projectFilter:"", page:0, transactionId:debt.purchase_id, _scrollToTarget:true});
+        await this.loadReview(); this.drawTabs(); this.render();
+      });
+      line.append(open); owed.append(line);
+    }
+    capital.append(owed);
+  }
   if (position.accounts?.length) {
     const accounts = this.el("div", undefined, "account-list");
     for (const account of position.accounts) {

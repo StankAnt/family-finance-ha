@@ -21,7 +21,9 @@ from .classification import (ECONOMIC_TYPES, add_project, add_rule, apply_overri
                              category_by_path, classify, confirm_manual_pair, decide_pair,
                              household)
 from .models import (Account, AccountBalanceSnapshot, BankConnection, CashEntry, Category, ClassificationCorrection, DecisionSuggestion, Goal,
-                     Mortgage, MortgageAllocation, Project, SyncRun, Transaction, TransferPair)
+                     Mortgage, MortgageAllocation, Project, PurchaseLink, SyncRun, Transaction, TransferPair)
+from .purchase_returns import (link_return, unlink_return, set_shares, purchase_details,
+                               purchase_offset, return_candidates)
 from .secrets import FinanceError, read_private
 from .sync import database_engine
 
@@ -66,7 +68,7 @@ def _options(db: Session) -> dict:
             select(Mortgage).where(Mortgage.household_id == home.id)).all()], key=lambda x: x["name"]),
         "goals": sorted([{"name": item.name, "currency": item.currency} for item in db.scalars(
             select(Goal).where(Goal.household_id == home.id)).all()], key=lambda x: x["name"]),
-        "economic_types": sorted(ECONOMIC_TYPES - {"internal_transfer"}),
+        "economic_types": sorted(ECONOMIC_TYPES - {"internal_transfer", "purchase_refund", "reimbursement"}),
     }
 
 
@@ -169,15 +171,10 @@ def _review(db: Session, payload: dict) -> dict:
             if converted is None:
                 missing_fx += 1
             else:
-                refunds = 0
-                for row in db.scalars(select(CashEntry).where(
-                        CashEntry.transaction_id == expense.id, CashEntry.kind == "reimbursement")):
-                    value = pln(db, row.amount, row.currency, row.occurred_on)
-                    if value is None:
-                        missing_fx += 1
-                    else:
-                        refunds += value
-                total_pln += max(converted - refunds, 0)
+                offset_value = purchase_offset(db, expense)
+                if offset_value is None:
+                    missing_fx += 1
+                total_pln += max(converted - (offset_value or 0), 0)
         cash_query = select(CashEntry).where(CashEntry.household_id == home.id,
             CashEntry.kind == "expense")
         if project:
@@ -200,6 +197,7 @@ def _review(db: Session, payload: dict) -> dict:
     pair_status = {transaction_id: pair.status for pair in pairs for transaction_id in
                    (pair.debit_transaction_id, pair.credit_transaction_id)}
     refund_amounts = {}
+    links = {link.credit_id: link for link in db.scalars(select(PurchaseLink).where(PurchaseLink.credit_id.in_(row_ids)))} if row_ids else {}
     if row_ids:
         for receipt in db.scalars(select(CashEntry).where(CashEntry.kind == "reimbursement",
                 CashEntry.transaction_id.in_(row_ids))):
@@ -216,6 +214,12 @@ def _review(db: Session, payload: dict) -> dict:
         "project": projects.get(tx.project_id), "economic_type": tx.economic_type,
         "pair_status": pair_status.get(tx.id),
         "cash_reimbursed": str(refund_amounts.get(tx.id, 0)),
+        "purchase": purchase_details(db, tx) if tx.amount < 0 and tx.status == "BOOK" and tx.economic_type in {"consumption", "project_expense", "unclassified"} else None,
+        "linked_return": ({"id": str(links[tx.id].id), "kind": links[tx.id].kind,
+            "purchase_id": str(links[tx.id].purchase_id),
+            "description": (db.get(Transaction, links[tx.id].purchase_id).description or "")[:250],
+            "date": str(db.get(Transaction, links[tx.id].purchase_id).booking_date)} if tx.id in links else None),
+        "return_candidates": return_candidates(db, tx) if tx.amount > 0 and not pair_status.get(tx.id) else [],
         "suggestion": ({"category": _category_path(categories[suggestions[tx.id].category_id], categories),
                         "confidence": str(suggestions[tx.id].confidence),
                         "purchase_probability": str(suggestions[tx.id].purchase_probability),
@@ -296,6 +300,11 @@ def execute(db: Session, operation: str, payload: dict) -> dict:
         return add_cash(db, payload)
     if operation == "cash_delete":
         return delete_cash(db, payload)
+    if operation in {"purchase_shares", "return_link", "return_unlink"}:
+        handler = {"purchase_shares": set_shares, "return_link": link_return, "return_unlink": unlink_return}[operation]
+        result = handler(db, payload)
+        db.commit()
+        return result
     if operation == "decide_transfer":
         if set(payload) != {"pair_id", "confirm"} or not isinstance(payload["confirm"], bool):
             raise FinanceError("Invalid transfer decision")

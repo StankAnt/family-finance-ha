@@ -143,9 +143,34 @@ class CashEntry(Base):
     currency: Mapped[str] = mapped_column(String(3), nullable=False, default="PLN")
     kind: Mapped[str] = mapped_column(String(20), nullable=False)
     transaction_id: Mapped[UUID | None] = mapped_column(ForeignKey("transaction.id"))
+    share_id: Mapped[UUID | None] = mapped_column(ForeignKey("purchase_share.id"))
+    affects_wallet: Mapped[bool] = mapped_column(default=True, nullable=False)
     category_id: Mapped[UUID | None] = mapped_column(ForeignKey("category.id"))
     project_id: Mapped[UUID | None] = mapped_column(ForeignKey("project.id"))
     note: Mapped[str | None] = mapped_column(String(250))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class PurchaseShare(Base):
+    __tablename__ = "purchase_share"
+    __table_args__ = (UniqueConstraint("purchase_id", "person"),)
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    purchase_id: Mapped[UUID] = mapped_column(ForeignKey("transaction.id"), nullable=False)
+    person: Mapped[str] = mapped_column(String(120), nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(20, 4), nullable=False)
+
+
+class PurchaseLink(Base):
+    __tablename__ = "purchase_link"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    purchase_id: Mapped[UUID] = mapped_column(ForeignKey("transaction.id"), nullable=False, index=True)
+    credit_id: Mapped[UUID] = mapped_column(ForeignKey("transaction.id"), nullable=False, unique=True)
+    share_id: Mapped[UUID | None] = mapped_column(ForeignKey("purchase_share.id"))
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    old_economic_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    old_category_id: Mapped[UUID | None] = mapped_column(Uuid)
+    old_project_id: Mapped[UUID | None] = mapped_column(Uuid)
+    old_override_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 

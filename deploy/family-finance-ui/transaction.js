@@ -1,4 +1,5 @@
 import { TYPE_INFO, categoryChoices, categoryLabel, isMortgageType, isMortgageCategory, reviewEconomicType, money, percent } from "./format.js";
+import { renderPurchaseExtras } from "./purchase-returns.js";
 
 export function renderTransaction(list, tx) {
     const row = this.el("article", undefined, "tx");
@@ -30,6 +31,10 @@ export function renderTransaction(list, tx) {
       this.appendReviewRow(list, row, tx);
       return;
     }
+    const dropdown = this.el("div", undefined, "tx-menu-panel"); menu.append(dropdown);
+    if (renderPurchaseExtras.call(this, row, tx, dropdown)) {
+      this.appendReviewRow(list, row, tx); return;
+    }
     if (!tx.pair_status && Number(tx.amount) !== 0) {
       const side = Number(tx.amount) < 0 ? "debit" : "credit";
       const selected = this.pairSelection[side]?.id === tx.id;
@@ -43,24 +48,20 @@ export function renderTransaction(list, tx) {
           description:tx.description || "Без описания" };
         this.render();
       };
-      const dropdown = this.el("div", undefined, "tx-menu-panel");
-      dropdown.append(pick);
-      if (side === "debit" && tx.currency === "PLN" &&
+      if (!tx.purchase?.shares?.length && !tx.purchase?.receipts?.length) dropdown.append(pick);
+      if (side === "debit" &&
           ["consumption", "project_expense", "unclassified"].includes(tx.economic_type) &&
-          Number(tx.cash_reimbursed || 0) < Math.abs(Number(tx.amount))) {
+          (Number(tx.purchase?.remaining_refundable || 0) > 0 || tx.purchase?.shares?.some(s => Number(s.outstanding) > 0))) {
         const reimbursement = this.el("button", "Вернули наличными");
         reimbursement.type = "button";
         reimbursement.onclick = () => {
-          this.pendingCashPurchase = tx; this.cashKind = "reimbursement";
+          this.pendingCashPurchase = tx; this.pendingCashShareId = null; this.cashKind = "reimbursement";
           this.tab = "cash"; this.drawTabs(); this.render();
           this.shadowRoot.querySelector(".nav")?.scrollIntoView({ behavior:"smooth", block:"start" });
         };
         dropdown.append(reimbursement);
       }
-      menu.append(dropdown);
     }
-    if (Number(tx.cash_reimbursed || 0) > 0)
-      row.append(this.el("div", `Вернули наличными: ${money(tx.cash_reimbursed, "PLN")}. Семейный расход уменьшен на эту сумму.`, "banner good"));
     if (tx.suggestion) {
       const suggestion = this.el("div", undefined, "suggestion");
       const detail = this.el("div");

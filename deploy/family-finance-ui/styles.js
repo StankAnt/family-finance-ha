@@ -1,6 +1,13 @@
 import { tokens } from "./tokens.js";
 
 export const styles = `${tokens}
+  .purchase-summary { margin:18px 0; padding:18px; border:1px solid var(--divider-color,#ddd); border-radius:16px; background:var(--ff-canvas); }
+  .purchase-person,.purchase-receipt { display:flex; align-items:center; flex-wrap:wrap; gap:10px 16px; padding:12px 0; border-bottom:1px solid var(--divider-color,#ddd); }
+  .purchase-share-inputs { display:grid; grid-template-columns:minmax(0,1fr) minmax(110px,180px) auto; gap:12px; align-items:end; margin:12px 0; }
+  .return-suggestions button { display:block; max-width:100%; margin:10px 0; text-align:left; white-space:normal; }
+  .cash-wallet-choice { grid-column:1/-1; display:flex; align-items:center; gap:10px; }
+  .cash-wallet-choice input { flex:none; width:auto; }
+  @media(max-width:600px) { .purchase-share-inputs { grid-template-columns:1fr; } .purchase-person,.purchase-receipt { align-items:flex-start; flex-direction:column; } }
   :host { display:block; color:var(--ff-ink); font-family:var(--primary-font-family,system-ui,sans-serif); }
   * { box-sizing:border-box; }
   .app { max-width:1320px; margin:0 auto; padding:clamp(16px,3vw,36px); background:var(--ff-canvas); min-height:calc(100vh - 110px); }

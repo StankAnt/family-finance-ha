@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from .decision_input import input_hash, prepare_input
 from .models import (Account, BankConnection, CashEntry, Category, CategorizationRule,
                      ClassificationCorrection, DecisionSuggestion, Household, Project, Transaction,
-                     TransferPair, now)
+                     TransferPair, PurchaseLink, PurchaseShare, now)
 from .secrets import FinanceError
 
 
@@ -23,6 +23,7 @@ ECONOMIC_TYPES = {
     "unclassified", "external_income", "consumption", "internal_transfer",
     "investment_transfer", "mortgage_interest", "mortgage_principal",
     "project_expense", "fx_conversion", "external_transfer",
+    "purchase_refund", "reimbursement",
 }
 
 CATEGORY_TREE = {
@@ -151,7 +152,7 @@ def add_rule(db: Session, *, pattern: str, category_path: str | None,
         raise FinanceError("Invalid rule match field")
     if direction not in {"debit", "credit", "any"}:
         raise FinanceError("Invalid rule direction")
-    if economic_type is not None and economic_type not in ECONOMIC_TYPES - {"internal_transfer"}:
+    if economic_type is not None and economic_type not in ECONOMIC_TYPES - {"internal_transfer", "purchase_refund", "reimbursement"}:
         raise FinanceError("Invalid rule economic type")
     try:
         min_abs_amount = Decimal(str(min_abs_amount)) if min_abs_amount is not None else None
@@ -343,6 +344,8 @@ def apply_overrides(db: Session, changes: list[dict[str, Any]]) -> int:
         connection = db.get(BankConnection, account.connection_id)
         if connection.household_id != home.id or transaction_id in transferred:
             raise FinanceError("Correction requires a household transaction without a confirmed pair")
+        if db.scalar(select(PurchaseLink.id).where(PurchaseLink.credit_id == transaction.id)):
+            raise FinanceError("Сначала отмените связь возврата с покупкой")
         old = (transaction.category_id, transaction.project_id, transaction.economic_type)
         if "category" in change:
             value = change["category"]
@@ -363,12 +366,22 @@ def apply_overrides(db: Session, changes: list[dict[str, Any]]) -> int:
             value = change["economic_type"]
             if value not in ECONOMIC_TYPES - {"internal_transfer"}:
                 raise FinanceError("Invalid manual economic type")
+            if value in {"purchase_refund", "reimbursement"}:
+                raise FinanceError("Свяжите поступление с исходной покупкой")
+            if value not in {"consumption", "project_expense", "unclassified"} and (
+                    db.scalar(select(PurchaseShare.id).where(PurchaseShare.purchase_id == transaction.id).limit(1)) or
+                    db.scalar(select(PurchaseLink.id).where(PurchaseLink.purchase_id == transaction.id).limit(1))):
+                raise FinanceError("Сначала уберите участников и связи возвратов этой покупки")
             if value not in {"consumption", "project_expense", "unclassified"} and db.scalar(
                     select(CashEntry.id).where(CashEntry.transaction_id == transaction.id,
                     CashEntry.kind == "reimbursement").limit(1)):
                 raise FinanceError("Remove the cash reimbursement before changing this purchase type")
             transaction.economic_type = value
         current = (transaction.category_id, transaction.project_id, transaction.economic_type)
+        for credit in db.scalars(select(Transaction).join(PurchaseLink,
+                PurchaseLink.credit_id == Transaction.id).where(PurchaseLink.purchase_id == transaction.id)):
+            credit.category_id = transaction.category_id
+            credit.project_id = transaction.project_id
         transaction.override_at = now()
         suggestion = db.scalar(select(DecisionSuggestion).where(
             DecisionSuggestion.transaction_id == transaction.id,

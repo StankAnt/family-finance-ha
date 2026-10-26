@@ -70,21 +70,35 @@ export function renderCash(holder) {
   const amountField = this.field("Сумма", "amount", "number");
   const dateInput = dateField.querySelector("input"); dateInput.value = new Date().toLocaleDateString("sv-SE");
   const amountInput = amountField.querySelector("input"); amountInput.min = "0.01"; amountInput.step = "0.01";
-  if (current === "reimbursement") amountInput.value = String(Math.max(0,
-    Math.abs(Number(this.pendingCashPurchase.amount)) - Number(this.pendingCashPurchase.cash_reimbursed || 0)).toFixed(2));
+  const shares = current === "reimbursement" ? (this.pendingCashPurchase.purchase?.shares || []) : [];
+  const remaining = () => {
+    const selected = shares.find(s => s.id === this.pendingCashShareId);
+    return Number(selected ? selected.outstanding : this.pendingCashPurchase?.purchase?.remaining_refundable || 0);
+  };
+  if (current === "reimbursement") amountInput.value = remaining().toFixed(2);
   grid.append(dateField, amountField);
   const availableCurrencies = current === "opening" ?
     CURRENCIES.filter(code => !(data.opening_currencies || []).includes(code)) : CURRENCIES;
-  const code = current === "reimbursement" ? "PLN" :
+  const code = current === "reimbursement" ? this.pendingCashPurchase.currency :
     availableCurrencies.includes(this.cashCurrency) ? this.cashCurrency : availableCurrencies[0];
   const currencyField = this.choice("Валюта", "currency",
     availableCurrencies.map(value => [value,value]), code);
   grid.append(currencyField);
   if (current === "reimbursement") {
+    if (shares.length) {
+      const person = this.choice("Кто вернул", "share_id", [["", "Выберите участника"], ...shares.map(s => [s.id, `${s.person} · осталось ${money(s.outstanding, this.pendingCashPurchase.currency)}`])], this.pendingCashShareId || "");
+      person.querySelector("select").required = true;
+      person.querySelector("select").onchange = event => {
+        this.pendingCashShareId = event.target.value;
+        amountInput.value = currencyField.querySelector("select").value === this.pendingCashPurchase.currency ? remaining().toFixed(2) : "";
+      };
+      grid.append(person);
+    }
+    const wallet = this.checkbox("Добавить полученные деньги в наличный кошелёк", "affects_wallet");
+    wallet.classList.add("cash-wallet-choice"); grid.append(wallet);
+    grid.append(this.el("p", "Без этой отметки запишется только возврат: остаток кошелька не изменится. Удобно, если наличные уже учтены в нём.", "muted"));
     currencyField.querySelector("select").onchange = event => {
-      amountInput.value = event.target.value === "PLN" ? String(Math.max(0,
-        Math.abs(Number(this.pendingCashPurchase.amount)) -
-        Number(this.pendingCashPurchase.cash_reimbursed || 0)).toFixed(2)) : "";
+      amountInput.value = event.target.value === this.pendingCashPurchase.currency ? remaining().toFixed(2) : "";
     };
   }
   if (current === "expense") {
@@ -100,16 +114,18 @@ export function renderCash(holder) {
   form.onsubmit = event => { event.preventDefault(); this.busy(async () => {
     save.disabled = true;
     const values = new FormData(form);
-    if (current === "reimbursement" && values.get("currency") !== "PLN")
+    if (current === "reimbursement" && (values.get("currency") !== "PLN" || this.pendingCashPurchase.currency !== "PLN"))
       await this.api("cash_fx_sync", { month:String(values.get("date")).slice(0, 7) });
     await this.api("cash_add", { kind: current, date: values.get("date"), amount: values.get("amount"),
       currency: values.get("currency") || "PLN",
       note: values.get("note") || "", ...(current === "reimbursement" ?
-        { transaction_id: this.pendingCashPurchase.id } : {}),
+        { transaction_id: this.pendingCashPurchase.id, affects_wallet: values.has("affects_wallet"),
+          ...(values.get("share_id") ? {share_id:values.get("share_id")} : {}) } : {}),
       ...(current === "expense" ? { category: values.get("category") || "", project: values.get("project") || "" } : {}) });
-    this.pendingCashPurchase = null; this.cashKind = "expense";
+    this.pendingCashPurchase = null; this.pendingCashShareId = null; this.cashKind = "expense";
     this.cashCurrency = values.get("currency") || "PLN";
-    await this.reloadPeriod(); this.status("Наличные учтены", true);
+    await this.reloadPeriod(); this.status(current === "reimbursement" ?
+      values.has("affects_wallet") ? "Возврат учтён и добавлен в кошелёк" : "Возврат учтён. Кошелёк не изменён" : "Наличные учтены", true);
   }).finally(() => { save.disabled = false; }); };
   actions.append(form);
   if (current === "opening") actions.append(this.el("p", "Начальный остаток — деньги, которые уже были у вас в кошельке на указанную дату. Это не доход и не расход.", "muted"));
@@ -128,6 +144,7 @@ function renderCashHistory(holder, data) {
     main.append(this.el("strong", KIND[row.kind] || row.kind),
       this.el("small", `${row.date}${row.category ? ` · ${row.category}` : ""}${row.project ? ` · ${row.project}` : ""}`));
     if (row.purchase) main.append(this.el("span", row.purchase, "cash-linked-purchase"));
+    if (row.kind === "reimbursement") main.append(this.el("small", `${row.person ? row.person + " · " : ""}${row.affects_wallet ? "Добавлено в кошелёк" : "Кошелёк не изменён"}`));
     if (row.note) main.append(this.el("span", row.note, "muted"));
     if (row.currency !== "PLN") main.append(this.el("small", row.amount_pln == null ?
       "Курс для этой даты пока не получен" : `≈ ${money(row.amount_pln)} по курсу от ${row.rate_date}`));

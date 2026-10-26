@@ -18,6 +18,8 @@ from .models import (Account, AccountBalanceSnapshot, BankConnection, CashEntry,
                      GoalProgress, ManualRevision, Mortgage, MortgageAllocation, Transaction,
                      ValuationSnapshot, Project, SyncRun, now)
 from .secrets import FinanceError
+from .purchase_returns import purchase_offset, receivables
+from .models import PurchaseLink
 
 CENT = Decimal("0.01")
 ZERO = Decimal("0")
@@ -273,6 +275,14 @@ def monthly_report(db: Session, year: int, month: int) -> dict:
                 reimbursements[receipt.transaction_id] += converted
     categories = {item.id: item for item in db.scalars(select(Category).where(
         Category.household_id == home.id)).all()}
+    expense_offsets = {}
+    for tx in rows:
+        if tx.amount < 0 and tx.economic_type in {"consumption", "project_expense", "unclassified"}:
+            offset = purchase_offset(db, tx)
+            if offset is None:
+                missing_cash_fx_ids.add(tx.id)
+            expense_offsets[tx.id] = offset or ZERO
+    linked_credit_ids = set(db.scalars(select(PurchaseLink.credit_id)))
     projects = {item.id: item.name for item in db.scalars(select(Project).where(
         Project.household_id == home.id)).all()}
     sums = defaultdict(lambda: ZERO)
@@ -294,6 +304,10 @@ def monthly_report(db: Session, year: int, month: int) -> dict:
             counts["missing_fx"] += 1
             continue
         sums["cashflow"] += amount_pln
+        if tx.id in linked_credit_ids:
+            counts["linked_returns"] += 1
+            sums["bank_returns_received"] += amount_pln
+            continue
         allocation = allocations.get(tx.id)
         if amount_pln < 0 and tx.economic_type != "fx_conversion":
             sums["outflows_total"] -= amount_pln
@@ -317,7 +331,7 @@ def monthly_report(db: Session, year: int, month: int) -> dict:
             sums["unclassified_net"] += amount_pln
             if amount_pln < 0:
                 counts["unclassified_debits"] += 1
-                spend = max(-amount_pln - reimbursements[tx.id], ZERO)
+                spend = max(-amount_pln - expense_offsets.get(tx.id, ZERO), ZERO)
                 sums["unclassified_spending"] += spend
                 category_sums["Other/Unclassified"] += spend
                 category_by_type[kind]["Other/Unclassified"] += spend
@@ -342,7 +356,7 @@ def monthly_report(db: Session, year: int, month: int) -> dict:
                 income_path = path
             category_by_type[kind][income_path] += amount_pln
         elif kind in {"consumption", "project_expense"}:
-            spend = max(-amount_pln - reimbursements[tx.id], ZERO)
+            spend = max(-amount_pln - expense_offsets.get(tx.id, ZERO), ZERO)
             sums["spending"] += spend
             spend_path = "Other/Uncategorized"
             if tx.category_id in categories:
@@ -402,6 +416,7 @@ def monthly_report(db: Session, year: int, month: int) -> dict:
             sums["baseline_living"] += spend
     for receipt in db.scalars(select(CashEntry).where(
             CashEntry.household_id == home.id, CashEntry.kind == "reimbursement",
+            CashEntry.affects_wallet.is_(True),
             CashEntry.occurred_on >= start, CashEntry.occurred_on < end)):
         converted = pln(db, receipt.amount, receipt.currency, receipt.occurred_on)
         if converted is None:
@@ -568,7 +583,7 @@ def position_report(db: Session, day: date) -> dict:
         gaps.append(kind)
     cash_by_currency = defaultdict(lambda: ZERO)
     for entry in db.scalars(select(CashEntry).where(
-            CashEntry.household_id == home.id, CashEntry.occurred_on <= day)):
+            CashEntry.household_id == home.id, CashEntry.occurred_on <= day, CashEntry.affects_wallet.is_(True))):
         cash_by_currency[entry.currency] += entry.amount
     for code, amount in cash_by_currency.items():
         value = pln(db, amount, code, day)
@@ -576,7 +591,11 @@ def position_report(db: Session, day: date) -> dict:
             gaps.append("cash_fx")
         else:
             parts["cash_on_hand"] += value or ZERO
-    assets = parts["bank_cash"] + parts["cash_on_hand"] + parts["investment"] + parts["property"] + parts["other_asset"]
+    owed = receivables(db, day)
+    if owed["amount_pln"] is None:
+        gaps.append("receivables_fx")
+    parts["receivables"] = Decimal(owed["amount_pln"] or "0")
+    assets = parts["bank_cash"] + parts["cash_on_hand"] + parts["receivables"] + parts["investment"] + parts["property"] + parts["other_asset"]
     debts = parts["mortgage_debt"] + parts["other_debt"]
     goals = []
     for goal in db.scalars(select(Goal).where(Goal.household_id == home.id, Goal.active.is_(True))):
@@ -623,6 +642,7 @@ def position_report(db: Session, day: date) -> dict:
             "cash_on_hand_pln": str(parts["cash_on_hand"].quantize(CENT)) if "cash_fx" not in gaps else None,
             "cash_on_hand_by_currency": {code: str(amount.quantize(CENT))
                                          for code, amount in sorted(cash_by_currency.items())},
+            "receivables": owed,
             "net_worth_pln": str((assets - debts).quantize(CENT)) if complete else None,
             "partial_net_worth_pln": str((assets - debts).quantize(CENT)),
             "complete": complete, "coverage_confirmed_as_of": str(declaration.as_of) if declaration else None,
