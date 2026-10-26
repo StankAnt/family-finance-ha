@@ -100,13 +100,15 @@ export function renderOverview(holder) {
     bank.append(this.el("p", `Доступно счетов: ${this.bankAccounts.account_count}. Кредитных: ${this.bankAccounts.types?.LOAN || 0}. ${kinds}`, "muted"));
   }
   const outgoing = this.el("section", undefined, "surface outgoing-summary");
-  outgoing.append(this.el("h3", "Сколько денег ушло за месяц"));
+  outgoing.append(this.el("h3", "Платежи и расходы за месяц"));
   const outgoingMetrics = this.el("div", undefined, "metrics");
   outgoingMetrics.append(
     this.metric("Все исходящие платежи", money(a.outflows_total || 0),
-      "Включая наличные покупки, ипотеку целиком и перечисления в инвестиции. Свои переводы и обмен валюты исключены"),
-    this.metric(hasMortgage ? "Без ипотеки и инвестиций" : "Без инвестиций", money(a.outflows_without_mortgage_investments || 0),
-      `${month.counts.unclassified_debits || 0} неразмеченных списаний включены предварительно; среди них ещё могут быть свои переводы`, "warm"));
+      `Полная сумма списаний до возвратов, включая ${hasMortgage ? "ипотеку и " : ""}инвестиции. Свои переводы и обмен валюты исключены`),
+    this.metric(hasMortgage ? "Списания без ипотеки и инвестиций" : "Списания без инвестиций", money(a.outflows_without_mortgage_investments || 0),
+      `До вычета возвратов. ${month.counts.unclassified_debits || 0} неразмеченных списаний включены предварительно`, "warm"),
+    this.metric("Расходы с учётом возвратов", money(a.personal_spending_after_returns || 0),
+      `Покупки, проекты и предварительно неразмеченные расходы; без ${hasMortgage ? "ипотеки и " : ""}инвестиций. В покупках месяца вычтено ${money(a.purchase_cost_adjustments || 0)} возвратов и чужих долей`, "soft"));
   outgoing.append(outgoingMetrics);
   const mortgageCost = Number(a.mortgage_interest || 0) + Number(a.mortgage_fees || 0);
   outgoing.append(this.el("p",
@@ -116,11 +118,11 @@ export function renderOverview(holder) {
     "muted outgoing-equation"));
   holder.append(outgoing);
   const metrics = this.el("div", undefined, "metrics");
+  const incomeDetail = month.counts.missing_fx ? "Есть операции без курса валюты" :
+    month.counts.unclassified_credits ? `${month.counts.unclassified_credits} поступлений на ${money(a.unclassified_receipts || 0)} ещё требуют разметки` : "Только внешние доходы";
   metrics.append(
     this.metric("Доходы извне", money(a.external_income || 0),
-      month.counts.missing_fx ? "Учтённые доходы; есть операции без курса валюты" :
-        month.counts.unclassified_credits ? `${month.counts.unclassified_credits} поступлений на ${money(a.unclassified_receipts || 0)} ещё требуют разметки` :
-          "Поступления не со своих счетов"),
+      `${incomeDetail}. Связанные возвраты покупок и денег за других людей исключены${month.counts.linked_returns ? `: ${money(a.bank_returns_received)} за месяц` : ""}`),
     this.metric("Разовые проекты", money(a.exceptional_projects || 0),
       hasMortgage ? "Уже входят в сумму без ипотеки и инвестиций" : "Уже входят в сумму без инвестиций", "warm"),
     this.metric("Перечислено в инвестиции", money(a.investment_contributions || 0),

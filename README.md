@@ -30,7 +30,7 @@ administration endpoint binds to host loopback only.
    ```sh
    git clone https://github.com/StankAnt/family-finance-ha.git
    cd family-finance-ha
-   git checkout v0.1.14
+   git checkout v0.1.15
    ```
 2. Run `python3 distribution/bootstrap.py`. It creates local random database and
    API credentials, mode-600 files under `secrets/`, and `.env` with your UID/GID.
@@ -202,6 +202,12 @@ refunds reduce the original purchase month's category and project, while the
 cashflow follows the actual receipt date. The link can be undone to restore the
 incoming transaction's previous classification.
 
+**Все исходящие платежи** shows gross cash outflows before refunds.
+**Расходы с учётом возвратов** shows purchases and projects after confirmed
+refunds and other participants' shares, with unclassified debits included
+provisionally. It excludes the whole mortgage payment and investment transfers.
+Confirmed repayment and store-refund credits are excluded from **Доходы извне**.
+
 The wallet is local to the finance database. Entering cash does not contact the
 bank or send cash notes to MQTT or OpenAI. Back up the database before updates.
 
@@ -213,7 +219,7 @@ the moving `main` branch. From the same checkout used for installation:
 
 ```sh
 git fetch --tags origin
-git checkout v0.1.14                       # latest release tag
+git checkout v0.1.15                       # latest release tag
 python3 distribution/update.py \
   --config-dir /path/to/homeassistant/config \
   --ha-container homeassistant            # omit if HA has another restart method

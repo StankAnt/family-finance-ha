@@ -309,6 +309,8 @@ def monthly_report(db: Session, year: int, month: int) -> dict:
             sums["bank_returns_received"] += amount_pln
             continue
         allocation = allocations.get(tx.id)
+        if tx.amount < 0 and tx.economic_type in {"consumption", "project_expense", "unclassified"}:
+            sums["purchase_cost_adjustments"] += min(-amount_pln, expense_offsets.get(tx.id, ZERO))
         if amount_pln < 0 and tx.economic_type != "fx_conversion":
             sums["outflows_total"] -= amount_pln
         if allocation:
@@ -433,6 +435,7 @@ def monthly_report(db: Session, year: int, month: int) -> dict:
     sums["outflows_investments"] += ZERO
     sums["living_cost_with_interest"] = sums["baseline_living"] + sums["mortgage_interest"] + sums["mortgage_fees"]
     sums["total_expense_with_interest"] = sums["spending"] + sums["mortgage_interest"] + sums["mortgage_fees"]
+    sums["personal_spending_after_returns"] = sums["spending"] + sums["unclassified_spending"]
     sums["provisional_expense_with_interest"] = sums["total_expense_with_interest"] + sums["unclassified_spending"]
     sums["unclassified_spending"] += ZERO
     sums["unclassified_receipts"] += ZERO
