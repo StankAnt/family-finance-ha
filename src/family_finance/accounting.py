@@ -482,6 +482,7 @@ def position_report(db: Session, day: date) -> dict:
     gaps = []
     stale = []
     account_rows = []
+    available_cash = ZERO
     calculated_balances = 0
     for account in accounts:
         all_snapshots = db.scalars(select(AccountBalanceSnapshot).where(
@@ -494,6 +495,9 @@ def position_report(db: Session, day: date) -> dict:
                                         row.observed_at), reverse=True)
         snapshot = next((row for row in snapshots if row.balance_type in {"CLBD", "ITBD"}), None)
         available = next((row for row in snapshots if row.balance_type == "ITAV"), None)
+        # Do not mix an old available balance with a newer booked snapshot.
+        if available and snapshot and available.sync_run_id != snapshot.sync_run_id:
+            available = None
         calculated = False
         basis_date = None
         booked = snapshot.amount if snapshot else None
@@ -520,10 +524,14 @@ def position_report(db: Session, day: date) -> dict:
                 calculated = True
                 basis_date = anchor.observed_at.date()
                 calculated_balances += 1
+        available_amount = available.amount if available and not calculated else None
+        display_amount = available_amount if available_amount is not None else booked
         account_rows.append({"name": account.name or "Счёт без названия",
                              "currency": account.currency,
                              "booked": str(booked) if booked is not None else None,
                              "available": str(available.amount) if available and not calculated else None,
+                             "display_amount": str(display_amount) if display_amount is not None else None,
+                             "display_basis": "available" if available_amount is not None else "booked",
                              "as_of": str(day if calculated else (snapshot.reference_date or snapshot.observed_at.date())) if booked is not None else None,
                              "balance_source": "calculated" if calculated else db.get(SyncRun, snapshot.sync_run_id).source if snapshot else None,
                              "balance_basis_date": str(basis_date) if basis_date else None,
@@ -536,6 +544,7 @@ def position_report(db: Session, day: date) -> dict:
             gaps.append("account_fx")
             continue
         parts["bank_cash"] += value
+        available_cash += pln(db, display_amount, account.currency, day)
         if snapshot and (day - (snapshot.reference_date or snapshot.observed_at.date())).days > 7:
             stale.append("account_balance")
     if calculated_balances:
@@ -644,7 +653,9 @@ def position_report(db: Session, day: date) -> dict:
     return {"as_of": str(day), "currency": "PLN",
             "components_pln": {key: str(value.quantize(CENT)) for key, value in sorted(parts.items())},
             "liquid_savings_pln": str(parts["bank_cash"].quantize(CENT)) if "account_balance" not in gaps and "account_fx" not in gaps else None,
-            "money_total_pln": str((parts["bank_cash"] + parts["cash_on_hand"]).quantize(CENT))
+            "available_savings_pln": str(available_cash.quantize(CENT))
+                if not {"account_balance", "account_fx"}.intersection(gaps) else None,
+            "money_total_pln": str((available_cash + parts["cash_on_hand"]).quantize(CENT))
                 if not {"account_balance", "account_fx", "cash_fx"}.intersection(gaps) else None,
             "cash_on_hand_pln": str(parts["cash_on_hand"].quantize(CENT)) if "cash_fx" not in gaps else None,
             "cash_on_hand_by_currency": {code: str(amount.quantize(CENT))

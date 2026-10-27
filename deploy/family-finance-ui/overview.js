@@ -138,8 +138,8 @@ export function renderOverview(holder) {
   const capital = this.el("section", undefined, "surface");
   capital.append(this.el("h3", `Капитал на ${position.as_of}`));
   const current = this.el("div", undefined, "metrics");
-  current.append(this.metric("Всего денег", money(position.money_total_pln),
-    `На счетах: ${money(position.liquid_savings_pln)} · наличные: ${money(position.cash_on_hand_pln)}${position.missing_components?.includes("account_balance_estimated") ? ". Остатки счетов за прошлый месяц рассчитаны по сохранённым операциям" : ""}`));
+  current.append(this.metric("Доступно денег", money(position.money_total_pln),
+    `На счетах: ${money(position.available_savings_pln)} · наличные: ${money(position.cash_on_hand_pln)}${position.missing_components?.includes("account_balance_estimated") ? ". Остатки счетов за прошлый месяц рассчитаны по сохранённым операциям" : ""}`));
   const cashMetric = this.metric("Из них наличные", position.cash_on_hand_pln == null ? "Нет курса" : money(position.cash_on_hand_pln),
     Object.entries(position.cash_on_hand_by_currency || {}).map(([code, value]) => money(value, code)).join(" · ") ||
       "Учтённый остаток семейного кошелька", "soft");
@@ -181,9 +181,9 @@ export function renderOverview(holder) {
     for (const account of position.accounts) {
       const item = this.el("div", undefined, "account-row");
       item.append(this.el("strong", account.name),
-        this.el("span", account.booked == null ? "Учётный остаток не получен" : money(account.booked, account.currency)),
+        this.el("span", account.display_amount == null ? "Остаток не получен" : money(account.display_amount, account.currency)),
         this.el("small", account.as_of ?
-          `${account.as_of}${account.balance_source === "manual" ? " · введено вручную" : account.balance_source === "calculated" ? ` · расчётная оценка по остатку от ${account.balance_basis_date}` : ""}${account.available == null ? "" : ` · доступно ${money(account.available, account.currency)}`}` :
+          `${account.as_of}${account.balance_source === "manual" ? " · введено вручную" : account.balance_source === "calculated" ? ` · расчётная оценка по остатку от ${account.balance_basis_date}` : ""} · ${account.display_basis === "available" ? "доступно с учётом блокировок" : "учётный остаток; доступный не получен"}` :
           account.next_balance_date ? `Первый сохранённый остаток доступен с ${account.next_balance_date}; автоматически восстановить выбранную дату пока нельзя` :
             "Остаток на эту дату не указан"));
       accounts.append(item);
