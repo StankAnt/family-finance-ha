@@ -30,7 +30,7 @@ administration endpoint binds to host loopback only.
    ```sh
    git clone https://github.com/StankAnt/family-finance-ha.git
    cd family-finance-ha
-   git checkout v0.1.15
+   git checkout v0.1.16
    ```
 2. Run `python3 distribution/bootstrap.py`. It creates local random database and
    API credentials, mode-600 files under `secrets/`, and `.env` with your UID/GID.
@@ -219,7 +219,7 @@ the moving `main` branch. From the same checkout used for installation:
 
 ```sh
 git fetch --tags origin
-git checkout v0.1.15                       # latest release tag
+git checkout v0.1.16                       # latest release tag
 python3 distribution/update.py \
   --config-dir /path/to/homeassistant/config \
   --ha-container homeassistant            # omit if HA has another restart method
@@ -257,3 +257,5 @@ reauthorization. Open **Настройки и ввод → Авторизаци�
 authorization link and sign in as each affected account owner separately, then
 refresh bank operations. Existing keys and transaction classifications are kept.
 Closed older sessions do not block sessions that are still authorized.
+
+Monthly reports and category charts use the transaction date (falling back to booking date, then value date), matching the operations filter. Only completed bank transactions count. Bank balance reconciliation and PLN exchange rates still use bank posting dates.

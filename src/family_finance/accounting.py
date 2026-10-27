@@ -10,7 +10,7 @@ from uuid import UUID
 from zoneinfo import ZoneInfo
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .classification import household
@@ -257,9 +257,13 @@ def monthly_report(db: Session, year: int, month: int) -> dict:
     home = household(db)
     start = date(year, month, 1)
     end = date(year + (month == 12), month % 12 + 1, 1)
+    # Use the same purchase date as the operations list. Bank posting dates
+    # remain the basis for balance reconciliation and currency conversion.
+    effective_date = func.coalesce(Transaction.transaction_date,
+                                   Transaction.booking_date, Transaction.value_date)
     rows = db.scalars(select(Transaction).join(Account).join(BankConnection).where(
         BankConnection.household_id == home.id, Transaction.status == "BOOK",
-        Transaction.booking_date >= start, Transaction.booking_date < end)).all()
+        effective_date >= start, effective_date < end)).all()
     allocations = {a.transaction_id: a for a in db.scalars(select(MortgageAllocation).where(
         MortgageAllocation.transaction_id.in_([tx.id for tx in rows]))).all()} if rows else {}
     reimbursements = defaultdict(lambda: ZERO)
