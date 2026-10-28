@@ -30,7 +30,7 @@ administration endpoint binds to host loopback only.
    ```sh
    git clone https://github.com/StankAnt/family-finance-ha.git
    cd family-finance-ha
-   git checkout v0.1.18
+   git checkout v0.1.19
    ```
 2. Run `python3 distribution/bootstrap.py`. It creates local random database and
    API credentials, mode-600 files under `secrets/`, and `.env` with your UID/GID.
@@ -219,7 +219,7 @@ the moving `main` branch. From the same checkout used for installation:
 
 ```sh
 git fetch --tags origin
-git checkout v0.1.18                       # latest release tag
+git checkout v0.1.19                       # latest release tag
 python3 distribution/update.py \
   --config-dir /path/to/homeassistant/config \
   --ha-container homeassistant            # omit if HA has another restart method
@@ -263,3 +263,5 @@ Monthly reports and category charts use the transaction date (falling back to bo
 Account cards and the available-money total use the bank-provided available balance, including holds. When unavailable in the latest balance sync, the booked balance is shown explicitly as a fallback. Booked balances remain the basis for net worth and balance reconciliation.
 
 Income can be assigned to a budget month in the operation editor (for example, salary received in November for October). The income card, income categories and operations month filter follow this choice. The original transaction date, bank balance, currency conversion date and cashflow remain unchanged. Clear the month to use the transaction date again. The assignment survives bank syncs, is audited, and is never copied to other payments by category learning.
+
+The dashboard month balance includes income-month assignments: actual cashflow plus income assigned into the month minus income assigned out. The actual cash movement is shown below for reconciliation. Moving salary never counts it in both months.

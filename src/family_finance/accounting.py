@@ -315,6 +315,11 @@ def monthly_report(db: Session, year: int, month: int) -> dict:
             continue
         if in_cash_period:
             sums["cashflow"] += amount_pln
+        if tx.economic_type == "external_income":
+            # Move income between budget months exactly once, while retaining
+            # the actual movement for bank reconciliation.
+            sums["income_month_adjustment"] += amount_pln * (
+                int(in_budget_period) - int(in_cash_period))
         if tx.id in linked_credit_ids:
             counts["linked_returns"] += 1
             sums["bank_returns_received"] += amount_pln
@@ -457,6 +462,7 @@ def monthly_report(db: Session, year: int, month: int) -> dict:
     sums["mortgage_principal_confirmed"] += ZERO
     sums["cash_spending"] += ZERO
     sums["cash_reimbursements"] = sum(reimbursements.values(), ZERO)
+    sums["budget_balance"] = sums["cashflow"] + sums["income_month_adjustment"]
     return {
         "period": f"{year:04d}-{month:02d}", "currency": "PLN",
         "fx_source": "NBP table A mid; latest published on/before booking date, max 7 days",

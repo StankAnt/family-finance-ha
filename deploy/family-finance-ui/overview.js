@@ -128,8 +128,8 @@ export function renderOverview(holder) {
     this.metric("Перечислено в инвестиции", money(a.investment_contributions || 0),
       hasMortgage ? "Уже входит во все исходящие платежи; не входит в сумму без ипотеки и инвестиций" :
         "Уже входит во все исходящие платежи; не входит в сумму без инвестиций", "soft"),
-    this.metric("Денежный поток", money(a.cashflow || 0),
-      "Банковские движения плюс полученные и потраченные наличные; это не сумма расходов", "soft")
+    this.metric("Баланс месяца", money(a.budget_balance || 0),
+      `С учётом выбранных месяцев дохода, всех списаний и возвратов. Фактическое движение денег: ${money(a.cashflow || 0)}`, "soft")
   );
   if (hasMortgage) metrics.insertBefore(this.metric("В тело ипотеки за месяц", money(a.mortgage_principal_confirmed || 0),
     `По разбивке ${month.counts.mortgage_allocated || 0} платежей${month.counts.mortgage_unallocated ? `; ещё ${month.counts.mortgage_unallocated} без разбивки` : ""}. Уже входит в «всю ипотеку» выше`, "soft"), metrics.children[2]);
