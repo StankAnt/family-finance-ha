@@ -10,7 +10,7 @@ from uuid import UUID
 from zoneinfo import ZoneInfo
 
 import httpx
-from sqlalchemy import func, select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
 from .classification import household
@@ -20,6 +20,7 @@ from .models import (Account, AccountBalanceSnapshot, BankConnection, CashEntry,
 from .secrets import FinanceError
 from .purchase_returns import purchase_offset, receivables
 from .models import PurchaseLink
+from .reporting_dates import budget_date, budget_date_expression, operation_date_expression
 
 CENT = Decimal("0.01")
 ZERO = Decimal("0")
@@ -257,13 +258,12 @@ def monthly_report(db: Session, year: int, month: int) -> dict:
     home = household(db)
     start = date(year, month, 1)
     end = date(year + (month == 12), month % 12 + 1, 1)
-    # Use the same purchase date as the operations list. Bank posting dates
-    # remain the basis for balance reconciliation and currency conversion.
-    effective_date = func.coalesce(Transaction.transaction_date,
-                                   Transaction.booking_date, Transaction.value_date)
+    effective_date = operation_date_expression()
+    reporting_date = budget_date_expression()
     rows = db.scalars(select(Transaction).join(Account).join(BankConnection).where(
         BankConnection.household_id == home.id, Transaction.status == "BOOK",
-        effective_date >= start, effective_date < end)).all()
+        or_(and_(effective_date >= start, effective_date < end),
+            and_(reporting_date >= start, reporting_date < end)))).all()
     allocations = {a.transaction_id: a for a in db.scalars(select(MortgageAllocation).where(
         MortgageAllocation.transaction_id.in_([tx.id for tx in rows]))).all()} if rows else {}
     reimbursements = defaultdict(lambda: ZERO)
@@ -298,19 +298,28 @@ def monthly_report(db: Session, year: int, month: int) -> dict:
     counts = defaultdict(int)
     original = defaultdict(lambda: ZERO)
     for tx in rows:
-        counts["booked"] += 1
+        actual_date = tx.transaction_date or tx.booking_date or tx.value_date
+        in_cash_period = actual_date is not None and start <= actual_date < end
+        report_date = budget_date(tx)
+        in_budget_period = report_date is not None and start <= report_date < end
+        if in_cash_period:
+            counts["booked"] += 1
         if tx.economic_type == "internal_transfer" and tx.id not in allocations:
             counts["internal_transfer"] += 1
             continue
-        original[tx.currency] += tx.amount
+        if in_cash_period:
+            original[tx.currency] += tx.amount
         amount_pln = pln(db, tx.amount, tx.currency, tx.booking_date)
         if amount_pln is None:
             counts["missing_fx"] += 1
             continue
-        sums["cashflow"] += amount_pln
+        if in_cash_period:
+            sums["cashflow"] += amount_pln
         if tx.id in linked_credit_ids:
             counts["linked_returns"] += 1
             sums["bank_returns_received"] += amount_pln
+            continue
+        if not in_budget_period:
             continue
         allocation = allocations.get(tx.id)
         if tx.amount < 0 and tx.economic_type in {"consumption", "project_expense", "unclassified"}:

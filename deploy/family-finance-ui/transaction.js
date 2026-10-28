@@ -1,4 +1,4 @@
-import { TYPE_INFO, categoryChoices, categoryLabel, isMortgageType, isMortgageCategory, reviewEconomicType, money, percent } from "./format.js";
+import { TYPE_INFO, categoryChoices, categoryLabel, isMortgageType, isMortgageCategory, reviewEconomicType, money, percent, monthTitle } from "./format.js";
 import { renderPurchaseExtras } from "./purchase-returns.js";
 
 export function renderTransaction(list, tx) {
@@ -12,6 +12,8 @@ export function renderTransaction(list, tx) {
     menu.append(menuButton);
     const left = this.el("div");
     left.append(this.el("div", tx.date, "tx-date"));
+    if (tx.income_month)
+      left.append(this.el("div", `Доход за ${monthTitle(tx.income_month)}`, "muted"));
     if (tx.booking_date && tx.booking_date !== tx.date)
       left.append(this.el("div", `Проведено банком ${tx.booking_date}`, "muted"));
     left.append(
@@ -104,6 +106,12 @@ export function renderTransaction(list, tx) {
     if (initialSpecial) advanced.open = true;
     const hiddenType = this.el("input"); hiddenType.type = "hidden"; hiddenType.name = "economic_type";
     form.append(categoryField, projectField, advanced, hiddenType);
+    const incomeMonthField = this.field("За какой месяц доход (необязательно)",
+      "income_month", "month", tx.income_month || "");
+    const incomeMonth = incomeMonthField.querySelector("input");
+    incomeMonth.min = "1900-01"; incomeMonth.max = "9998-12";
+    incomeMonthField.append(this.el("small", "Пусто — по дате зачисления. Выбор меняет месяц дохода и фильтр операций, но не дату зачисления и остатки на счетах.", "muted"));
+    if (isCredit) form.append(incomeMonthField);
     const help = this.el("p", "", "muted type-help");
     const category = form.querySelector('[name="category"]');
     const project = form.querySelector('[name="project"]');
@@ -115,6 +123,8 @@ export function renderTransaction(list, tx) {
     };
     const updateHelp = () => {
       hiddenType.value = reviewEconomicType(tx.amount, category.value, project.value, special.value);
+      incomeMonthField.hidden = !isCredit || hiddenType.value !== "external_income";
+      incomeMonth.disabled = incomeMonthField.hidden;
       help.textContent = hiddenType.value === "unclassified" ?
         "Выберите категорию дохода или откройте «Особый случай»." :
         !isCredit && !category.value && !project.value && !special.value ?
@@ -151,7 +161,11 @@ export function renderTransaction(list, tx) {
       if (isMortgageType(hiddenType.value)) return;
       const values = new FormData(form);
       this.saveCorrection(tx, { category: values.get("category"), project: values.get("project"),
-        economic_type: values.get("economic_type") }, save, "Разметка сохранена"); };
+        economic_type: values.get("economic_type"),
+        ...(isCredit ? {income_month: values.get("income_month") || null} : {})
+      }, save, values.get("income_month") ?
+        `Разметка сохранена. Доход отнесён к месяцу «${monthTitle(values.get("income_month"))}»` :
+        "Разметка сохранена"); };
     row.append(form);
     if (Number(tx.amount) < 0 && hasMortgage) {
       mortgagePanel = this.el("div", undefined, "mortgage-panel");

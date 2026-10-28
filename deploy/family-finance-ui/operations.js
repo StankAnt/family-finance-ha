@@ -8,7 +8,8 @@ export async function saveCorrection(tx, values, button, message) {
     if (!values.economic_type) throw new Error("Выберите тип операции");
     const result = await this.api("correct", { transaction_id: tx.id,
       category: values.category || null, project: values.project || null,
-      economic_type: values.economic_type });
+      economic_type: values.economic_type,
+      ...(Object.hasOwn(values, "income_month") ? { income_month: values.income_month || null } : {}) });
     learned = result.learned || 0;
     await this.reloadPeriod();
   }, message);
@@ -127,6 +128,7 @@ export function appendReviewRow(list, row, tx) {
     this.el("small", [tx.bank_status !== "BOOK" ? "Ожидает проведения" :
       categoryLabel(tx.category) || TYPE_INFO[tx.economic_type]?.[0] || "Без категории",
       tx.project ? `Проект: ${tx.project}` : "",
+      tx.income_month ? `Доход за ${monthTitle(tx.income_month)}` : "",
       tx.return_candidates?.length ? "Возможный возврат — проверьте связь" : "",
       tx.linked_return ? "Связан с покупкой" : "",
       tx.purchase?.shares?.length ? "Есть доли других участников" : ""].filter(Boolean).join(" · ")));

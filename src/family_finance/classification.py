@@ -6,6 +6,7 @@ from collections import defaultdict
 from datetime import date
 from decimal import Decimal, InvalidOperation
 import re
+import json
 from typing import Any
 from uuid import UUID
 
@@ -15,7 +16,7 @@ from sqlalchemy.orm import Session
 from .decision_input import input_hash, prepare_input
 from .models import (Account, BankConnection, CashEntry, Category, CategorizationRule,
                      ClassificationCorrection, DecisionSuggestion, Household, Project, Transaction,
-                     TransferPair, PurchaseLink, PurchaseShare, now)
+                     TransferPair, PurchaseLink, PurchaseShare, ManualRevision, now)
 from .secrets import FinanceError
 
 
@@ -347,6 +348,7 @@ def apply_overrides(db: Session, changes: list[dict[str, Any]]) -> int:
         if db.scalar(select(PurchaseLink.id).where(PurchaseLink.credit_id == transaction.id)):
             raise FinanceError("Сначала отмените связь возврата с покупкой")
         old = (transaction.category_id, transaction.project_id, transaction.economic_type)
+        old_income_month = transaction.income_month
         if "category" in change:
             value = change["category"]
             if value is not None and not isinstance(value, str):
@@ -377,6 +379,28 @@ def apply_overrides(db: Session, changes: list[dict[str, Any]]) -> int:
                     CashEntry.kind == "reimbursement").limit(1)):
                 raise FinanceError("Remove the cash reimbursement before changing this purchase type")
             transaction.economic_type = value
+        if "income_month" in change:
+            value = change["income_month"]
+            if value is None or value == "":
+                transaction.income_month = None
+            else:
+                if (not isinstance(value, str) or not re.fullmatch(r"[0-9]{4}-[0-9]{2}", value)
+                        or transaction.economic_type != "external_income" or transaction.amount <= 0):
+                    raise FinanceError("Месяц дохода можно указать только для поступления извне в формате ГГГГ-ММ")
+                try:
+                    transaction.income_month = date.fromisoformat(value + "-01")
+                except ValueError:
+                    raise FinanceError("Некорректный месяц дохода") from None
+                if not 1900 <= transaction.income_month.year <= 9998:
+                    raise FinanceError("Некорректный месяц дохода")
+        if transaction.economic_type != "external_income":
+            transaction.income_month = None
+        month_changed = transaction.income_month != old_income_month
+        if month_changed:
+            db.add(ManualRevision(household_id=home.id, entity_kind="income_month",
+                record_id=transaction.id,
+                previous_value=json.dumps({"income_month": str(old_income_month) if old_income_month else None}),
+                new_value=json.dumps({"income_month": str(transaction.income_month) if transaction.income_month else None})))
         current = (transaction.category_id, transaction.project_id, transaction.economic_type)
         for credit in db.scalars(select(Transaction).join(PurchaseLink,
                 PurchaseLink.credit_id == Transaction.id).where(PurchaseLink.purchase_id == transaction.id)):
@@ -394,6 +418,8 @@ def apply_overrides(db: Session, changes: list[dict[str, Any]]) -> int:
                 old_category_id=old[0], new_category_id=current[0],
                 old_project_id=old[1], new_project_id=current[1],
                 old_economic_type=old[2], new_economic_type=current[2]))
+            count += 1
+        elif month_changed:
             count += 1
     return count
 

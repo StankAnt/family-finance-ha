@@ -16,6 +16,7 @@ from sqlalchemy import String, and_, cast, func, or_, select
 from sqlalchemy.orm import Session
 
 from .accounting import import_manual, monthly_report, pln, position_report
+from .reporting_dates import budget_date_expression, operation_date_expression
 from .cash import add_cash, cash_report, delete_cash
 from .classification import (ECONOMIC_TYPES, add_project, add_rule, apply_overrides,
                              category_by_path, classify, confirm_manual_pair, decide_pair,
@@ -90,12 +91,12 @@ def _review(db: Session, payload: dict) -> dict:
     else:
         base = base.where(Transaction.status.in_(("BOOK", "HOLD", "PDNG")))
     # Show the purchase date when the bank provides one; posting can be days later.
-    effective_date = func.coalesce(Transaction.transaction_date,
-                                   Transaction.booking_date, Transaction.value_date)
+    effective_date = operation_date_expression()
     period = _period(payload)
     if period:
         start, end = _month_bounds(*period)
-        base = base.where(effective_date >= start, effective_date < end)
+        reporting_date = budget_date_expression()
+        base = base.where(reporting_date >= start, reporting_date < end)
     project_name = payload.get("project", "")
     category_path = payload.get("category", "")
     if not isinstance(project_name, str) or len(project_name) > 120:
@@ -207,6 +208,7 @@ def _review(db: Session, payload: dict) -> dict:
     return {"total": total, "offset": offset, "project_total": project_total, "rows": [{
         "id": str(tx.id), "date": str(tx.transaction_date or tx.booking_date or tx.value_date or ""),
         "booking_date": str(tx.booking_date) if tx.booking_date else None,
+        "income_month": tx.income_month.strftime("%Y-%m") if tx.income_month and tx.economic_type == "external_income" else None,
         "bank_status": tx.status, "amount": str(tx.amount),
         "currency": tx.currency, "description": (tx.description or "")[:500],
         "category": (_category_path(categories[tx.category_id], categories)
@@ -318,7 +320,7 @@ def execute(db: Session, operation: str, payload: dict) -> dict:
         db.commit()
         return {"confirmed": 1}
     if operation == "correct":
-        allowed = {"transaction_id", "category", "project", "economic_type"}
+        allowed = {"transaction_id", "category", "project", "economic_type", "income_month"}
         if set(payload) - allowed or "transaction_id" not in payload:
             raise FinanceError("Invalid correction fields")
         count = apply_overrides(db, [payload])

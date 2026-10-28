@@ -122,7 +122,7 @@ export function renderOverview(holder) {
     month.counts.unclassified_credits ? `${month.counts.unclassified_credits} поступлений на ${money(a.unclassified_receipts || 0)} ещё требуют разметки` : "Только внешние доходы";
   metrics.append(
     this.metric("Доходы извне", money(a.external_income || 0),
-      `${incomeDetail}. Связанные возвраты покупок и денег за других людей исключены${month.counts.linked_returns ? `: ${money(a.bank_returns_received)} за месяц` : ""}`),
+      `${incomeDetail}. По выбранному месяцу дохода или дате зачисления. Связанные возвраты покупок и денег за других людей исключены${month.counts.linked_returns ? `: ${money(a.bank_returns_received)} за месяц` : ""}`),
     this.metric("Разовые проекты", money(a.exceptional_projects || 0),
       hasMortgage ? "Уже входят в сумму без ипотеки и инвестиций" : "Уже входят в сумму без инвестиций", "warm"),
     this.metric("Перечислено в инвестиции", money(a.investment_contributions || 0),

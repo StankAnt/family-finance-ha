@@ -117,6 +117,7 @@ class Transaction(Base):
     booking_date: Mapped[date | None] = mapped_column(Date)
     value_date: Mapped[date | None] = mapped_column(Date)
     transaction_date: Mapped[date | None] = mapped_column(Date)
+    income_month: Mapped[date | None] = mapped_column(Date)
     amount: Mapped[Decimal] = mapped_column(Numeric(20, 4), nullable=False)
     currency: Mapped[str] = mapped_column(String(3), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
